@@ -69,9 +69,9 @@ To sign in as HQ Admin with the designated account:
 ### HQ Admin (`hq@test.com`)
 
 1. **Login** → should land on Dashboard.
-2. **Sidebar** should show: Dashboard, Upload Data, Forecasts, **Branches**, **Regions**, Activity, **Users**.
+2. **Sidebar** should show: Dashboard, Forecasts, **Branches**, **Regions**, Activity, **Users**.
 3. **Regions** (sidebar → Regions):
-   - Should list all 6 regions with totals.
+   - Should list all 7 regions with totals.
    - No redirect; page loads.
 4. **Branches** (sidebar → Branches):
    - Should list all branches (or filter by region if you use the filter).
@@ -89,7 +89,7 @@ To sign in as HQ Admin with the designated account:
 ### Region Admin (`region@test.com`)
 
 1. **Login** → Dashboard.
-2. **Sidebar** should show: Dashboard, Upload Data, Forecasts, **Branches**, Activity.  
+2. **Sidebar** should show: Dashboard, Forecasts, **Branches**, Activity.  
    - **No** “Regions” or “Users”.
 3. **Regions** (if you open `/dashboard/regions` by URL):
    - Should **redirect** to `/dashboard` (only HQ can see Regions).
@@ -110,7 +110,7 @@ To sign in as HQ Admin with the designated account:
 ### Branch User (`branch@test.com`)
 
 1. **Login** → Dashboard.
-2. **Sidebar** should show: Dashboard, Upload Data, Forecasts, Activity.  
+2. **Sidebar** should show: Dashboard, Forecasts, Activity.  
    - **No** “Branches” or “Regions” or “Users”.
 3. **Branches** (if you open `/dashboard/branches` by URL):
    - Should **redirect** to `/dashboard` (branch users don’t get Branches list).
@@ -119,8 +119,6 @@ To sign in as HQ Admin with the designated account:
    - Upload/forecast counts should be **only for their branch**.
 5. **Forecasts** (sidebar → Forecasts):
    - Branch should be **fixed** to their branch (or only their branch in the list).
-6. **Upload** (sidebar → Upload Data):
-   - Branch should be **fixed** to their branch.
 7. **Activity** (sidebar → Activity):
    - Should show uploads **only for their branch**.
 
@@ -137,7 +135,7 @@ To sign in as HQ Admin with the designated account:
 | Sidebar: Branches            | ✓        | ✓ (region)   | ✗           |
 | /dashboard/regions           | OK       | Redirect     | Redirect    |
 | Branches list scope          | All      | One region   | N/A         |
-| Forecast/Upload branch scope | All      | Region       | One branch  |
+| Forecast branch scope        | All      | Region       | One branch  |
 | Activity scope               | All      | Region       | One branch  |
 
 ---

@@ -1,6 +1,6 @@
 # Orkin – Branch Forecasting
 
-Monthly forecasting app for **49 operational branches** across 6 regions, with role-based access: **HQ Admin**, **Region Admin**, and **Branch User**. Upload Excel actuals and budget, generate forecasts per branch, and drill down by region.
+Monthly forecasting app for **46 operational branches** across 7 regions, with role-based access: **HQ Admin**, **Region Admin**, and **Branch User**. Import branch-level Excel actuals/budget via scripts, generate forecasts per branch, and drill down by region.
 
 ## Tech stack
 
@@ -40,20 +40,25 @@ Monthly forecasting app for **49 operational branches** across 6 regions, with r
 | `pnpm start`| Start production server    |
 | `pnpm lint` | Run ESLint                 |
 | `pnpm test` | Run unit tests (Vitest)     |
+| `pnpm forecast:benchmark` | Compare forecasting models on 2025 backtest |
+| `pnpm forecast:rebuild` | Rebuild 2026 forecasts with ETS (best 2025 backtest) |
+| `pnpm forecast:rebuild:sarima` | Rebuild 2026 forecasts with SARIMA |
 
-**Bulk import from Excel:** If you have `scripts/data/three-years.xlsm` (one sheet per branch, Description + Jan–Dec), run `node scripts/import-actuals.mjs --inspect` then `node scripts/import-actuals.mjs`. See **scripts/data/README.md**.
+**Branch-by-branch import from Excel:** Use one file per branch and import with `node scripts/import-branch-file.mjs --branch <code|name> --file <path> --year <year>`. See **scripts/data/README.md**.
 
-## Excel upload format
+## Excel import format
 
 - **Column A** = line item (Description)
 - **Columns B–M** = Jan–Dec (numeric values)
 - **Row 1** = header (skipped)
 
-Use **Upload Data** → **Download template** in the app, or see **[UPLOAD_FORMAT.md](./UPLOAD_FORMAT.md)**.
+Use the documented spreadsheet layout in **[UPLOAD_FORMAT.md](./UPLOAD_FORMAT.md)**.
 
 ## Forecasting and dates
 
-- Forecasts use **last year actuals**, **current year actuals to date**, and **budget** (when uploaded).
+- Forecasts use historical actuals and budget data stored in Supabase.
+- Production forecasting uses **ETS (Holt–Winters additive)**, chosen by 2025 backtest as the best model. One model per branch/line item, trained on 2023–2025 monthly history. No bias; forecast from history only.
+- `budget_value` is kept separate from `forecast_value`; budget is not injected into the forecast formula.
 - **Current month** and **forecast year** can be set on the Forecast page; underlying logic uses the selected year/month for “as of” and remaining months.
 - Server date is **UTC** for “current month” when not overridden.
 

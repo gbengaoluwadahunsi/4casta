@@ -42,17 +42,20 @@ export function DashboardHeader({ profile }: { profile: Profile }) {
     router.refresh()
   }
 
-  const initials = profile.full_name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase() || profile.email[0].toUpperCase()
+  const initials =
+    profile.full_name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase() ||
+    (profile.email?.[0]?.toUpperCase() ?? "U")
 
-  const locationText = profile.role === "hq_admin"
-    ? "Headquarters"
-    : profile.role === "region_admin"
-    ? profile.regions?.name || "Region"
-    : profile.branches?.name || "Branch"
+  const locationText =
+    profile.role === "hq_admin"
+      ? "Headquarters"
+      : profile.role === "region_admin"
+        ? (profile.regions?.name ?? "Region")
+        : (profile.branches?.name ?? "Branch")
 
   return (
     <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">

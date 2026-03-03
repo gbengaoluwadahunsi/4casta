@@ -229,9 +229,10 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_new_user();
 
--- Insert default regions (from the Python script)
+-- Insert default regions (7 regions; GVR added, branches redistributed)
 INSERT INTO public.regions (name) VALUES
   ('PACIFIC REGION'),
+  ('GVR REGION'),
   ('PRAIRIE REGION'),
   ('ONTARIO REGION'),
   ('GTA REGION'),
@@ -240,7 +241,7 @@ INSERT INTO public.regions (name) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- Insert operational branches only (49 branches; excludes functional/corporate OH, CC, QA, SALES, TTL)
--- Pacific Region (11)
+-- Pacific Region (7)
 INSERT INTO public.branches (name, code, region_id) 
 SELECT t.branch_name, t.branch_code, r.id FROM (VALUES
   ('25 WESTSIDE', '025'),
@@ -248,13 +249,19 @@ SELECT t.branch_name, t.branch_code, r.id FROM (VALUES
   ('27 BC INT N', '027'),
   ('28 ATLAS', '028'),
   ('29 VPC', '029'),
+  ('32 BC INT S', '032'),
+  ('34 VCR ISLAND', '034')
+) AS t(branch_name, branch_code), public.regions r WHERE r.name = 'PACIFIC REGION'
+ON CONFLICT (code) DO NOTHING;
+
+-- GVR Region (4) — branches moved from Pacific
+INSERT INTO public.branches (name, code, region_id) 
+SELECT t.branch_name, t.branch_code, r.id FROM (VALUES
   ('30 RICHMOND', '030'),
   ('31 VCR', '031'),
-  ('32 BC INT S', '032'),
   ('33 VALLEY', '033'),
-  ('34 VCR ISLAND', '034'),
   ('36 BURNABY', '036')
-) AS t(branch_name, branch_code), public.regions r WHERE r.name = 'PACIFIC REGION'
+) AS t(branch_name, branch_code), public.regions r WHERE r.name = 'GVR REGION'
 ON CONFLICT (code) DO NOTHING;
 
 -- Prairie Region (9)

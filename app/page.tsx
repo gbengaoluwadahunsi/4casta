@@ -10,7 +10,7 @@ export default function HomePage() {
       {/* Header */}
       <header className="border-b border-border">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Image src="/orkinlogo.png" alt="Orkin" width={120} height={36} className="h-9 w-auto" priority />
+          <Image src="/orkinlogo.png" alt="Orkin" width={120} height={36} className="h-9 w-auto" />
           <div className="flex items-center gap-4">
             <Link href="/auth/login">
               <Button variant="ghost">Sign in</Button>

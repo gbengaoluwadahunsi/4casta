@@ -174,12 +174,16 @@ function rowsToActuals(rows, year) {
 }
 
 function matchBranch(sheetName, branches) {
-  const normalized = sheetName.trim().toUpperCase().replace(/\s+/g, " ")
+  const raw = sheetName.trim()
+  const normalized = raw.toUpperCase().replace(/\s+/g, " ")
+  const codePadded = /^\d{1,3}$/.test(raw) ? raw.padStart(3, "0") : null
   for (const b of branches) {
-    if (b.code && String(b.code).trim().toUpperCase() === normalized) return b
-    if (b.name && String(b.name).trim().toUpperCase() === normalized) return b
-    if (b.code && normalized.includes(String(b.code).trim().toUpperCase())) return b
-    if (b.name && normalized.includes(String(b.name).trim().toUpperCase())) return b
+    const bc = b.code ? String(b.code).trim().toUpperCase() : ""
+    const bn = b.name ? String(b.name).trim().toUpperCase() : ""
+    if (bc && (bc === normalized || (codePadded && bc === codePadded.toUpperCase()))) return b
+    if (bn && bn === normalized) return b
+    if (bc && normalized.includes(bc)) return b
+    if (bn && normalized.includes(bn)) return b
   }
   return null
 }
@@ -206,7 +210,7 @@ async function main() {
       console.log("  Row", i, ":", JSON.stringify(row.slice(0, 8)))
     })
     console.log("")
-    const skipSheets = new Set(["ToC", "Summary & Index", "Inputs", "Travel", "Mktg Dept by GL", "ORKIN CANADA", "PACIFIC REGION", "PRAIRIE REGION", "ONTARIO REGION", "GTA REGION", "QUEBEC REGION", "ATLANTIC REGION"])
+    const skipSheets = new Set(["ToC", "TOC", "Summary & Index", "Inputs", "Travel", "Mktg Dept by GL", "ORKIN CANADA", "PACIFIC REGION", "GVR REGION", "PRAIRIE REGION", "ONTARIO REGION", "GTA REGION", "QUEBEC REGION", "ATLANTIC REGION"])
     const branchSheet = workbook.SheetNames.find((n) => !skipSheets.has(n))
     if (branchSheet) {
       const branchRows = parseSheetToRows(workbook, branchSheet)
@@ -268,7 +272,7 @@ async function main() {
     console.log("(dry-run using anon key; no data will be written)\n")
   }
 
-  const skipSheets = new Set(["ToC", "Summary & Index", "Inputs", "Travel", "Mktg Dept by GL", "ORKIN CANADA", "PACIFIC REGION", "PRAIRIE REGION", "ONTARIO REGION", "GTA REGION", "QUEBEC REGION", "ATLANTIC REGION"])
+  const skipSheets = new Set(["ToC", "TOC", "Summary & Index", "Inputs", "Travel", "Mktg Dept by GL", "ORKIN CANADA", "PACIFIC REGION", "GVR REGION", "PRAIRIE REGION", "ONTARIO REGION", "GTA REGION", "QUEBEC REGION", "ATLANTIC REGION", "TTL PAC_GVR"])
   let totalInserted = 0
   let sheetsProcessed = 0
   let sheetsSkipped = 0

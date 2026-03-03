@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, UserPlus, Shield, MapPin } from "lucide-react"
+import { Loader2, UserPlus } from "lucide-react"
 
 type Region = { id: string; name: string }
 
@@ -100,16 +100,10 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="hq_admin">
-                  <span className="flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    HQ Admin — full access to all regions and branches
-                  </span>
+                  HQ Admin — full access to all regions and branches
                 </SelectItem>
                 <SelectItem value="region_admin">
-                  <span className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4" />
-                    Region Admin — access to one region and its branches
-                  </span>
+                  Region Admin — access to one region and its branches
                 </SelectItem>
               </SelectContent>
             </Select>

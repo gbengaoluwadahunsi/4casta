@@ -59,11 +59,13 @@ export function UsersTable({ users, regions, branches }: Props) {
         </TableHeader>
         <TableBody>
           {users.map((u) => {
-            const initials = u.full_name
-              ?.split(" ")
-              .map((n: string) => n[0])
-              .join("")
-              .toUpperCase() || u.email[0].toUpperCase()
+            const initials =
+              u.full_name
+                ?.split(" ")
+                .map((n: string) => n[0])
+                .join("")
+                .toUpperCase() ||
+              (u.email?.[0]?.toUpperCase() ?? "?")
             const role = roleLabels[u.role] || roleLabels.branch_user
             return (
               <TableRow key={u.id}>

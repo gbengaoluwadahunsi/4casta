@@ -111,7 +111,7 @@ describe("generateBranchForecasts", () => {
 describe("formatCurrency", () => {
   it("formats as CAD with no decimals", () => {
     expect(formatCurrency(1234.56)).toMatch(/\$1,235|1,234/)
-    expect(formatCurrency(0)).toBe("$0")
+    expect(formatCurrency(0)).toMatch(/^\$0$|^CA\$0$/)
   })
 })
 

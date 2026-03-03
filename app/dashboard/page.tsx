@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { LineChart, Building2, TrendingUp } from "lucide-react"
+import { LineChart, Building2, MapPin, TrendingUp } from "lucide-react"
 import Link from "next/link"
 
 export default async function DashboardPage() {
@@ -17,15 +17,6 @@ export default async function DashboardPage() {
   const isBranchUser = profile?.role === "branch_user"
   const userBranchId = profile?.branch_id ?? null
 
-  const { count: forecastsCount } = isBranchUser && userBranchId
-    ? await supabase
-        .from("forecasts")
-        .select("*", { count: "exact", head: true })
-        .eq("branch_id", userBranchId)
-    : await supabase
-        .from("forecasts")
-        .select("*", { count: "exact", head: true })
-
   let branchesCount: number | null = 1
   if (profile?.role === "branch_user") {
     branchesCount = 1
@@ -41,6 +32,22 @@ export default async function DashboardPage() {
       .select("*", { count: "exact", head: true })
     branchesCount = count
   }
+
+  let regionsCount: number | null = 1
+  if (profile?.role === "branch_user") {
+    regionsCount = 1
+  } else if (profile?.role === "region_admin") {
+    regionsCount = 1
+  } else if (profile?.role === "hq_admin") {
+    const { count } = await supabase
+      .from("regions")
+      .select("*", { count: "exact", head: true })
+    regionsCount = count
+  }
+
+  // Forecasts = branches × 12 months (e.g. 49 branches × 12 months = 588)
+  const MONTHS_PER_YEAR = 12
+  const forecastsCount = (branchesCount ?? 0) * MONTHS_PER_YEAR
 
   return (
     <div className="space-y-6">
@@ -69,7 +76,9 @@ export default async function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{forecastsCount || 0}</div>
             <p className="text-xs text-muted-foreground">
-              {isBranchUser ? "Forecasts for your branch" : "Monthly forecasts"}
+              {isBranchUser
+                ? "1 branch × 12 months"
+                : `${branchesCount ?? 0} branches × 12 months`}
             </p>
           </CardContent>
         </Card>
@@ -89,6 +98,25 @@ export default async function DashboardPage() {
                 : profile?.role === "region_admin"
                   ? "In your region"
                   : "Under management"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Regions
+            </CardTitle>
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{regionsCount ?? 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {profile?.role === "branch_user"
+                ? "Your region"
+                : profile?.role === "region_admin"
+                  ? "Your region"
+                  : "Total regions"}
             </p>
           </CardContent>
         </Card>

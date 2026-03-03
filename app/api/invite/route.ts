@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (role) {
-      const { error: insertError } = await admin
+      await admin
         .from("pending_invites")
         .insert({
           email,
@@ -74,9 +74,7 @@ export async function POST(request: NextRequest) {
           region_id: regionId || null,
           branch_id: branchId || null,
         })
-      if (insertError) {
-        console.error("pending_invites insert error:", insertError)
-      }
+      // If insert fails (e.g. migration not run), invite still sent; HQ can set role on Users page
     }
 
     const roleMessage =

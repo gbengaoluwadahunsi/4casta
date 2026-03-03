@@ -6,6 +6,9 @@ import { MapPin, Building2, TrendingUp, TrendingDown, Users } from "lucide-react
 import Link from "next/link"
 import { formatCurrency } from "@/lib/forecasting"
 
+const KPI_REVENUE = "TOTAL NET REVENUE"
+const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
+
 export default async function RegionsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -51,29 +54,61 @@ export default async function RegionsPage() {
     }
   })
 
-  // Fetch forecast summaries per region
+  // Fetch forecast summaries per region (paginate to avoid Supabase default row limit truncation)
   const branchIds = branches?.map(b => b.id) || []
-  const { data: forecasts } = await supabase
-    .from("forecasts")
-    .select("branch_id, forecast_value, budget_value")
-    .in("branch_id", branchIds)
-    .eq("year", 2026)
-    .eq("month", 1)
+  let forecasts: Array<{ branch_id: string; description: string; forecast_value: number; budget_value: number }> = []
+  if (branchIds.length > 0) {
+    const pageSize = 1000
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from("forecasts")
+        .select("branch_id, description, forecast_value, budget_value")
+        .in("branch_id", branchIds)
+        .eq("year", 2026)
+        .eq("month", 1)
+        .range(from, from + pageSize - 1)
+
+      if (error) {
+        throw error
+      }
+
+      const rows = data || []
+      forecasts.push(...rows)
+      if (rows.length < pageSize) break
+      from += pageSize
+    }
+  }
 
   // Create branch to region lookup
   const branchToRegion = new Map<string, string>()
   branches?.forEach(b => branchToRegion.set(b.id, b.region_id))
 
   // Aggregate forecasts by region
-  const forecastMap = new Map<string, { forecast: number; budget: number }>()
-  forecasts?.forEach(f => {
+  const forecastMap = new Map<string, {
+    revenueForecast: number
+    revenueBudget: number
+    expenseForecast: number
+    expenseBudget: number
+  }>()
+  forecasts.forEach(f => {
     const regionId = branchToRegion.get(f.branch_id)
     if (regionId) {
-      const existing = forecastMap.get(regionId) || { forecast: 0, budget: 0 }
-      forecastMap.set(regionId, {
-        forecast: existing.forecast + f.forecast_value,
-        budget: existing.budget + f.budget_value,
-      })
+      const existing = forecastMap.get(regionId) || {
+        revenueForecast: 0,
+        revenueBudget: 0,
+        expenseForecast: 0,
+        expenseBudget: 0,
+      }
+      const desc = String(f.description || "").toUpperCase().trim()
+      if (desc === KPI_REVENUE) {
+        existing.revenueForecast += Number(f.forecast_value || 0)
+        existing.revenueBudget += Number(f.budget_value || 0)
+      } else if (KPI_EXPENSE_LINES.has(desc)) {
+        existing.expenseForecast += Number(f.forecast_value || 0)
+        existing.expenseBudget += Number(f.budget_value || 0)
+      }
+      forecastMap.set(regionId, existing)
     }
   })
 
@@ -91,11 +126,17 @@ export default async function RegionsPage() {
           const branchCount = branchCountMap.get(region.id) || 0
           const userCount = userCountMap.get(region.id) || 0
           const forecastData = forecastMap.get(region.id)
-          const variance = forecastData 
-            ? forecastData.forecast - forecastData.budget 
+          const revenueVariance = forecastData
+            ? forecastData.revenueForecast - forecastData.revenueBudget
             : 0
-          const variancePercent = forecastData?.budget 
-            ? (variance / forecastData.budget) * 100 
+          const revenueVariancePercent = forecastData?.revenueBudget
+            ? (revenueVariance / forecastData.revenueBudget) * 100
+            : 0
+          const expenseVariance = forecastData
+            ? forecastData.expenseForecast - forecastData.expenseBudget
+            : 0
+          const expenseVariancePercent = forecastData?.expenseBudget
+            ? (expenseVariance / forecastData.expenseBudget) * 100
             : 0
 
           return (
@@ -126,23 +167,40 @@ export default async function RegionsPage() {
                   {forecastData ? (
                     <div className="space-y-2 pt-2 border-t border-border">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Regional Forecast</span>
-                        <span className="font-semibold">{formatCurrency(forecastData.forecast)}</span>
+                        <span className="text-sm text-muted-foreground">Revenue F vs B</span>
+                        <span className="font-semibold">
+                          {formatCurrency(forecastData.revenueForecast)} / {formatCurrency(forecastData.revenueBudget)}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Regional Budget</span>
-                        <span className="text-sm">{formatCurrency(forecastData.budget)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Variance</span>
+                        <span className="text-sm text-muted-foreground">Revenue variance</span>
                         <div className="flex items-center gap-1">
-                          {variance >= 0 ? (
+                          {revenueVariance >= 0 ? (
                             <TrendingUp className="h-3 w-3 text-accent" />
                           ) : (
                             <TrendingDown className="h-3 w-3 text-destructive" />
                           )}
-                          <Badge variant={variance >= 0 ? "default" : "destructive"} className="text-xs">
-                            {variancePercent >= 0 ? "+" : ""}{variancePercent.toFixed(1)}%
+                          <Badge variant={revenueVariance >= 0 ? "default" : "destructive"} className="text-xs">
+                            {revenueVariancePercent >= 0 ? "+" : ""}{revenueVariancePercent.toFixed(1)}%
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Expense F vs B</span>
+                        <span className="font-semibold">
+                          {formatCurrency(forecastData.expenseForecast)} / {formatCurrency(forecastData.expenseBudget)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Expense variance</span>
+                        <div className="flex items-center gap-1">
+                          {expenseVariance >= 0 ? (
+                            <TrendingUp className="h-3 w-3 text-accent" />
+                          ) : (
+                            <TrendingDown className="h-3 w-3 text-destructive" />
+                          )}
+                          <Badge variant={expenseVariance >= 0 ? "default" : "destructive"} className="text-xs">
+                            {expenseVariancePercent >= 0 ? "+" : ""}{expenseVariancePercent.toFixed(1)}%
                           </Badge>
                         </div>
                       </div>

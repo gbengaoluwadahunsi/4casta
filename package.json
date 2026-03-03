@@ -8,7 +8,12 @@
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "clear-forecasts": "node clear-forecasts-and-budget.mjs",
+    "check-supabase": "node scripts/check-supabase.mjs",
+    "forecast:benchmark": "python scripts/ml_model_benchmark_2026.py",
+    "forecast:rebuild": "node scripts/rebuild-2026-forecast-ets.mjs",
+    "forecast:rebuild:sarima": "node scripts/rebuild-2026-forecast-sarima.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -70,6 +75,8 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.22.0",
+    "eslint-config-next": "^16.1.6",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

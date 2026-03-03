@@ -25,3 +25,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python (ets-runner.py)
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# optional: uncomment to avoid committing Excel data (large binaries)
+# /branchData/

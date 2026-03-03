@@ -63,13 +63,15 @@ Follow these steps to connect the app to Supabase.
    - Tables: `regions`, `branches`, `profiles`, `uploads`, `actuals`, `forecasts`
    - RLS policies and helper functions
    - Trigger to create a profile when a user signs up
-   - Seed data: 6 regions and **49 operational branches** (functional/corporate OH, CC, QA, SALES, TTL are excluded).
+   - Seed data: 7 regions and **49 operational branches** (functional/corporate OH, CC, QA, SALES, TTL are excluded).
 
 6. **If the sign-up page shows "No branches in this region"** after selecting a region, run the migration `scripts/002_branches_select_anon.sql` in the SQL Editor. It allows the sign-up form (unauthenticated) to load the branch list.
 
 7. **If you previously ran the old schema with 77 branches** and want to keep only the 49 operational branches, run `scripts/003_operational_branches_only.sql` in the SQL Editor. This removes the other branches and their actuals/forecasts/uploads; users with a removed branch will have their `branch_id` cleared.
 
 8. **For HQ Admin “Create account” (invite HQ/Region Admin with role):** run `scripts/004_pending_invites.sql` in the SQL Editor. This adds the `pending_invites` table and updates the signup trigger so invited users get the correct role (HQ Admin or Region Admin) when they first sign in.
+
+9. **If you have the old 6 regions and want GVR + branch redistribution:** run `scripts/005_gvr_region_and_redistribute.sql` in the SQL Editor. This adds **GVR REGION** and moves branches 030, 031, 033, 036 from Pacific to GVR (7 regions, 49 branches total).
 
 ---
 
