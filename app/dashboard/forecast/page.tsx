@@ -156,12 +156,14 @@ export default function ForecastPage() {
           setLoading(false)
           return
         }
+        // HQ/region summary: fetch only the selected month to avoid 40k+ rows and slow load
         const existingForecasts = await fetchForecastRowsPaginated(() =>
           supabase
             .from("forecasts")
             .select("*")
             .in("branch_id", branchIds)
             .eq("year", currentYear)
+            .eq("month", currentMonth)
         )
 
         if (existingForecasts && existingForecasts.length > 0) {
@@ -236,13 +238,13 @@ export default function ForecastPage() {
     } finally {
       setLoading(false)
     }
-  }, [selectedBranch, selectedRegionId, supabase, currentYear, branches, fetchForecastRowsPaginated])
+  }, [selectedBranch, selectedRegionId, supabase, currentYear, currentMonth, branches, fetchForecastRowsPaginated])
 
   useEffect(() => {
     if (selectedBranch) {
       loadForecasts()
     }
-  }, [selectedBranch, selectedRegionId, currentYear, loadForecasts])
+  }, [selectedBranch, selectedRegionId, currentYear, currentMonth, loadForecasts])
 
   const handleUpdateForecast = async (description: string, month: number, newValue: number) => {
     if (!selectedBranch || selectedBranch === ALL_BRANCHES_ID) return
