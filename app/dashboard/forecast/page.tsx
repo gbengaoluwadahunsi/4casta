@@ -219,25 +219,37 @@ export default function ForecastPage() {
           setForecasts([])
         }
         setLoading(false)
-        // Phase 2: fetch all 12 months in background for chart and full-year totals
-        fetchForecastRowsPaginated(() =>
-          supabase
-            .from("forecasts")
-            .select("*")
-            .in("branch_id", branchIds)
-            .eq("year", currentYear)
-        ).then((allRows) => {
-          if (allRows.length > 0) setForecasts(aggregate(allRows))
-        }).catch((err: unknown) => {
-          const msg = err instanceof Error
-            ? err.message
-            : (err != null && typeof (err as { message?: string }).message === "string")
-              ? (err as { message: string }).message
-              : (err != null && typeof (err as { error_description?: string }).error_description === "string")
-                ? (err as { error_description: string }).error_description
-                : String(err)
-          console.warn("Background full-year load failed (monthly totals still shown):", msg)
-        })
+        // Phase 2: fetch all 12 months in background (chunk branches to avoid timeouts/limits)
+        const CHUNK = 15
+        const chunks: string[][] = []
+        for (let i = 0; i < branchIds.length; i += CHUNK) {
+          chunks.push(branchIds.slice(i, i + CHUNK))
+        }
+        Promise.all(
+          chunks.map((ids) =>
+            fetchForecastRowsPaginated(() =>
+              supabase
+                .from("forecasts")
+                .select("*")
+                .in("branch_id", ids)
+                .eq("year", currentYear)
+            )
+          )
+        )
+          .then((results) => {
+            const allRows = results.flat()
+            if (allRows.length > 0) setForecasts(aggregate(allRows))
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error
+              ? err.message
+              : (err != null && typeof (err as { message?: string }).message === "string")
+                ? (err as { message: string }).message
+                : (err != null && typeof (err as { error_description?: string }).error_description === "string")
+                  ? (err as { error_description: string }).error_description
+                  : String(err)
+            console.warn("Background full-year load failed (monthly totals still shown):", msg)
+          })
       } else {
         const existingForecasts = await fetchForecastRowsPaginated(() =>
           supabase
@@ -359,8 +371,10 @@ export default function ForecastPage() {
   const expenseVariance = expenseForecast - expenseBudget
   const expenseVariancePct = expenseBudget !== 0 ? (expenseVariance / expenseBudget) * 100 : 0
 
-  // Full-year totals (all 12 months) for HQ — used for annual 2026 display and chart
-  const allMonthRows = forecasts.filter(f => {
+  // Full-year totals (all 12 months) — only valid when we have data for every month
+  const monthsPresent = new Set(forecasts.map((f) => f.month))
+  const hasFullYearData = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) => monthsPresent.has(m))
+  const allMonthRows = forecasts.filter((f) => {
     const d = normDesc(f.description)
     return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
   })
@@ -368,7 +382,7 @@ export default function ForecastPage() {
   let annualRevenueBudget = 0
   let annualExpenseForecast = 0
   let annualExpenseBudget = 0
-  allMonthRows.forEach(f => {
+  allMonthRows.forEach((f) => {
     const d = normDesc(f.description)
     if (d === KPI_REVENUE) {
       annualRevenueForecast += f.forecastValue
@@ -618,7 +632,7 @@ export default function ForecastPage() {
               {loading ? "Loading…" : "— comparing budget to forecast for selected month"}
             </span>
           </div>
-          {!loading && forecasts.length > 0 && (
+          {!loading && forecasts.length > 0 && hasFullYearData && (
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader className="pb-2">
