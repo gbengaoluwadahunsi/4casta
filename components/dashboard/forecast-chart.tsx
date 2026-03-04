@@ -67,56 +67,62 @@ export function ForecastChart({ forecasts, currentMonth }: ForecastChartProps) {
   })
 
   return (
-    <div className="h-[400px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={monthlyData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis 
-            dataKey="month" 
-            className="text-xs"
-            tick={{ fill: "hsl(var(--muted-foreground))" }}
-          />
-          <YAxis 
-            className="text-xs"
-            tick={{ fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={axisLabel}
-          />
-          <Tooltip content={<ChartTooltip />} />
-          <Legend />
-          <ReferenceLine
-            x={getShortMonthName(currentMonth)}
-            stroke="hsl(var(--muted-foreground))"
-            strokeDasharray="5 5"
-            label={{ value: "Current", position: "top", fill: "hsl(var(--muted-foreground))" }}
-          />
-          <Line
-            type="monotone"
-            dataKey="forecast"
-            name="Forecast"
-            stroke="hsl(var(--primary))"
-            strokeWidth={2}
-            dot={{ fill: "hsl(var(--primary))", strokeWidth: 2 }}
-            activeDot={{ r: 6 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="budget"
-            name="Budget"
-            stroke="hsl(var(--accent))"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={{ fill: "hsl(var(--accent))", strokeWidth: 2 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="lastYear"
-            name="Last Year"
-            stroke="hsl(var(--muted-foreground))"
-            strokeWidth={1}
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="w-full min-w-0 overflow-x-auto">
+      <div className="h-[280px] sm:h-[320px] md:h-[400px] min-w-[280px]" style={{ width: "100%" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={monthlyData}
+            margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+            <XAxis
+              dataKey="month"
+              tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+              tickFormatter={axisLabel}
+              tickLine={false}
+              width={42}
+            />
+            <Tooltip content={<ChartTooltip />} />
+            <Legend wrapperStyle={{ fontSize: "12px" }} />
+            <ReferenceLine
+              x={getShortMonthName(currentMonth)}
+              stroke="hsl(var(--muted-foreground))"
+              strokeDasharray="5 5"
+              label={{ value: "Current", position: "top", fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="forecast"
+              name="Forecast"
+              stroke="hsl(var(--primary))"
+              strokeWidth={2}
+              dot={{ fill: "hsl(var(--primary))", strokeWidth: 2 }}
+              activeDot={{ r: 6 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="budget"
+              name="Budget"
+              stroke="hsl(var(--accent))"
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              dot={{ fill: "hsl(var(--accent))", strokeWidth: 2 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="lastYear"
+              name="Last Year"
+              stroke="hsl(var(--muted-foreground))"
+              strokeWidth={1}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }

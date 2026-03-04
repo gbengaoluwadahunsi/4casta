@@ -417,17 +417,17 @@ export default function ForecastPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 min-w-0">
+      <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Budget vs Forecast</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Budget vs Forecast</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
             View budget and forecast at HQ, region, or branch for {currentYear} (as of {getShortMonthName(currentMonth)}). Variance = Forecast − Budget.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={String(currentYear)} onValueChange={(v) => setCurrentYear(Number(v))}>
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="w-full sm:w-[100px]">
               <SelectValue placeholder="Year" />
             </SelectTrigger>
             <SelectContent>
@@ -437,7 +437,7 @@ export default function ForecastPage() {
             </SelectContent>
           </Select>
           <Select value={String(currentMonth)} onValueChange={(v) => setCurrentMonth(Number(v))}>
-            <SelectTrigger className="w-[110px]">
+            <SelectTrigger className="w-full sm:w-[110px]">
               <SelectValue placeholder="As of month" />
             </SelectTrigger>
             <SelectContent>
@@ -448,7 +448,7 @@ export default function ForecastPage() {
           </Select>
           {profile?.role === "hq_admin" && selectedBranch === ALL_BRANCHES_ID && regionsList.length > 0 && (
             <Select value={selectedRegionId} onValueChange={setSelectedRegionId}>
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-full sm:w-[220px]">
                 <SelectValue placeholder="Region" />
               </SelectTrigger>
               <SelectContent>
@@ -461,7 +461,7 @@ export default function ForecastPage() {
           )}
           {profile?.role !== "branch_user" && branches.length > 0 && (
             <Select value={selectedBranch || ALL_BRANCHES_ID} onValueChange={(v) => { setSelectedBranch(v); if (v !== ALL_BRANCHES_ID) setSelectedRegionId(ALL_REGIONS_ID) }}>
-              <SelectTrigger className="w-[260px]">
+              <SelectTrigger className="w-full sm:w-[260px]">
                 <SelectValue placeholder="Select branch" />
               </SelectTrigger>
               <SelectContent>
@@ -603,14 +603,14 @@ export default function ForecastPage() {
 
       {(selectedBranch === ALL_BRANCHES_ID || (selectedBranch && selectedBranch !== ALL_BRANCHES_ID)) && (loading || forecasts.length > 0) && (
         <>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="secondary">{viewLevelLabel}</Badge>
-            <span>
+            <span className="min-w-0">
               {loading ? "Loading…" : "— comparing budget to forecast for selected month"}
             </span>
           </div>
           {!loading && forecasts.length > 0 && hasFullYearData && (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -635,7 +635,7 @@ export default function ForecastPage() {
               </Card>
             </div>
           )}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {loading ? (
               <>
                 {[1, 2, 3, 4].map((i) => (
@@ -716,7 +716,7 @@ export default function ForecastPage() {
                   <CardDescription>Monthly breakdown: budget and forecast by line item. Variance = Forecast − Budget. Use search and filter to narrow results.</CardDescription>
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <div className="relative flex-1 max-w-xs">
+                  <div className="relative flex-1 w-full sm:max-w-xs">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       placeholder="Search categories..."
@@ -726,7 +726,7 @@ export default function ForecastPage() {
                     />
                   </div>
                   <Select value={selectedDescription} onValueChange={setSelectedDescription}>
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                       <SelectValue placeholder="Filter by category" />
                     </SelectTrigger>
                     <SelectContent>
