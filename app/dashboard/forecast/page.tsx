@@ -204,45 +204,13 @@ export default function ForecastPage() {
           result.sort((a, b) => (a.description.localeCompare(b.description) || a.month - b.month))
           return result
         }
-        // Phase 1: fetch selected month only so total budget/expense and variance show quickly
-        const monthRows = await fetchForecastRowsPaginated(() =>
-          supabase
-            .from("forecasts")
-            .select("*")
-            .in("branch_id", branchIds)
-            .eq("year", currentYear)
-            .eq("month", currentMonth)
-        )
-        if (monthRows.length > 0) {
-          const newMonthAgg = aggregate(monthRows)
-          setForecasts((prev) => {
-            const hasFullYear = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) =>
-              prev.some((f) => f.month === m)
-            )
-            if (!hasFullYear || prev.length === 0) return newMonthAgg
-            const otherMonths = prev.filter((f) => f.month !== currentMonth)
-            const merged = [...otherMonths, ...newMonthAgg].sort(
-              (a, b) => a.description.localeCompare(b.description) || a.month - b.month
-            )
-            return merged
-          })
-        } else {
-          setForecasts((prev) => {
-            const hasFullYear = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) =>
-              prev.some((f) => f.month === m)
-            )
-            if (!hasFullYear) return []
-            return prev.filter((f) => f.month !== currentMonth)
-          })
-        }
-        setLoading(false)
-        // Phase 2: fetch all 12 months in background (chunk branches to avoid timeouts/limits)
+        // Fetch all 12 months once; month dropdown only filters the display (no refetch)
         const CHUNK = 15
         const chunks: string[][] = []
         for (let i = 0; i < branchIds.length; i += CHUNK) {
           chunks.push(branchIds.slice(i, i + CHUNK))
         }
-        Promise.all(
+        const results = await Promise.all(
           chunks.map((ids) =>
             fetchForecastRowsPaginated(() =>
               supabase
@@ -253,20 +221,12 @@ export default function ForecastPage() {
             )
           )
         )
-          .then((results) => {
-            const allRows = results.flat()
-            if (allRows.length > 0) setForecasts(aggregate(allRows))
-          })
-          .catch((err: unknown) => {
-            const msg = err instanceof Error
-              ? err.message
-              : (err != null && typeof (err as { message?: string }).message === "string")
-                ? (err as { message: string }).message
-                : (err != null && typeof (err as { error_description?: string }).error_description === "string")
-                  ? (err as { error_description: string }).error_description
-                  : String(err)
-            console.warn("Background full-year load failed (monthly totals still shown):", msg)
-          })
+        const allRows = results.flat()
+        if (allRows.length > 0) {
+          setForecasts(aggregate(allRows))
+        } else {
+          setForecasts([])
+        }
       } else {
         const existingForecasts = await fetchForecastRowsPaginated(() =>
           supabase
@@ -298,13 +258,13 @@ export default function ForecastPage() {
     } finally {
       setLoading(false)
     }
-  }, [selectedBranch, selectedRegionId, supabase, currentYear, currentMonth, branches, fetchForecastRowsPaginated])
+  }, [selectedBranch, selectedRegionId, supabase, currentYear, branches, fetchForecastRowsPaginated])
 
   useEffect(() => {
     if (selectedBranch) {
       loadForecasts()
     }
-  }, [selectedBranch, selectedRegionId, currentYear, currentMonth, loadForecasts])
+  }, [selectedBranch, selectedRegionId, currentYear, loadForecasts])
 
   const handleUpdateForecast = async (description: string, month: number, newValue: number) => {
     if (!selectedBranch || selectedBranch === ALL_BRANCHES_ID) return
