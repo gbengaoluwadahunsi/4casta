@@ -11,7 +11,41 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts"
+import type { TooltipProps } from "recharts"
 import { type ForecastResult, getShortMonthName, formatCurrency } from "@/lib/forecasting"
+
+// Y-axis: show millions when values are large, otherwise thousands
+function axisLabel(value: number): string {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(0)}M`
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}k`
+  return `$${value.toFixed(0)}`
+}
+
+// Custom tooltip so each value is clearly labeled (Forecast, Budget, Last Year)
+function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
+  if (!active || !payload?.length || !label) return null
+  return (
+    <div
+      className="rounded-md border bg-card px-3 py-2 text-sm shadow-md"
+      style={{
+        borderColor: "hsl(var(--border))",
+      }}
+    >
+      <p className="font-medium text-foreground mb-1.5">{label}</p>
+      <ul className="space-y-0.5">
+        {payload.map((entry) => (
+          <li key={entry.dataKey} className="flex items-center gap-2">
+            <span className="text-muted-foreground">{entry.name}:</span>
+            <span className="font-medium">{formatCurrency(Number(entry.value))}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground mt-1.5 pt-1 border-t border-border">
+        Total revenue + expenses for this month
+      </p>
+    </div>
+  )
+}
 
 type ForecastChartProps = {
   forecasts: ForecastResult[]
@@ -45,17 +79,9 @@ export function ForecastChart({ forecasts, currentMonth }: ForecastChartProps) {
           <YAxis 
             className="text-xs"
             tick={{ fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+            tickFormatter={axisLabel}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              borderColor: "hsl(var(--border))",
-              borderRadius: "var(--radius)",
-            }}
-            labelStyle={{ color: "hsl(var(--foreground))" }}
-            formatter={(value: number) => [formatCurrency(value), ""]}
-          />
+          <Tooltip content={<ChartTooltip />} />
           <Legend />
           <ReferenceLine
             x={getShortMonthName(currentMonth)}

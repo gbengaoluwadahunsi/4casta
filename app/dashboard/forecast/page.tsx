@@ -17,6 +17,7 @@ import {
   getShortMonthName,
   type ForecastResult 
 } from "@/lib/forecasting"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ForecastChart } from "@/components/dashboard/forecast-chart"
 import { ForecastTable } from "@/components/dashboard/forecast-table"
 
@@ -35,6 +36,13 @@ type Profile = {
 
 const ALL_BRANCHES_ID = "__all__" // HQ/region summary view (sum of forecasts from all branches)
 const ALL_REGIONS_ID = "__all_regions__" // HQ view: all regions (HQ total); Select cannot use ""
+
+const KPI_REVENUE = "TOTAL NET REVENUE"
+const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
+
+function normDesc(s: string) {
+  return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim()
+}
 
 export default function ForecastPage() {
   const searchParams = useSearchParams()
@@ -156,19 +164,10 @@ export default function ForecastPage() {
           setLoading(false)
           return
         }
-        // HQ/region summary: fetch only the selected month to avoid 40k+ rows and slow load
-        const existingForecasts = await fetchForecastRowsPaginated(() =>
-          supabase
-            .from("forecasts")
-            .select("*")
-            .in("branch_id", branchIds)
-            .eq("year", currentYear)
-            .eq("month", currentMonth)
-        )
-
-        if (existingForecasts && existingForecasts.length > 0) {
+        const aggregate = (rows: any[]): ForecastResult[] => {
+          if (!rows.length) return []
           const byKey = new Map<string, { forecast: number; budget: number; lastMonth: number; lastYear: number }>()
-          existingForecasts.forEach(f => {
+          rows.forEach(f => {
             const key = `${f.description}\t${f.month}`
             const cur = byKey.get(key)
             const forecast = Number(f.forecast_value)
@@ -186,7 +185,7 @@ export default function ForecastPage() {
               })
             }
           })
-          const formattedForecasts: ForecastResult[] = Array.from(byKey.entries()).map(([key, v]) => {
+          const result: ForecastResult[] = Array.from(byKey.entries()).map(([key, v]) => {
             const [description, monthStr] = key.split("\t")
             const month = Number(monthStr)
             const variance = v.forecast - v.budget
@@ -202,11 +201,43 @@ export default function ForecastPage() {
               variancePercent,
             }
           })
-          formattedForecasts.sort((a, b) => (a.description.localeCompare(b.description) || a.month - b.month))
-          setForecasts(formattedForecasts)
+          result.sort((a, b) => (a.description.localeCompare(b.description) || a.month - b.month))
+          return result
+        }
+        // Phase 1: fetch selected month only so total budget/expense and variance show quickly
+        const monthRows = await fetchForecastRowsPaginated(() =>
+          supabase
+            .from("forecasts")
+            .select("*")
+            .in("branch_id", branchIds)
+            .eq("year", currentYear)
+            .eq("month", currentMonth)
+        )
+        if (monthRows.length > 0) {
+          setForecasts(aggregate(monthRows))
         } else {
           setForecasts([])
         }
+        setLoading(false)
+        // Phase 2: fetch all 12 months in background for chart and full-year totals
+        fetchForecastRowsPaginated(() =>
+          supabase
+            .from("forecasts")
+            .select("*")
+            .in("branch_id", branchIds)
+            .eq("year", currentYear)
+        ).then((allRows) => {
+          if (allRows.length > 0) setForecasts(aggregate(allRows))
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error
+            ? err.message
+            : (err != null && typeof (err as { message?: string }).message === "string")
+              ? (err as { message: string }).message
+              : (err != null && typeof (err as { error_description?: string }).error_description === "string")
+                ? (err as { error_description: string }).error_description
+                : String(err)
+          console.warn("Background full-year load failed (monthly totals still shown):", msg)
+        })
       } else {
         const existingForecasts = await fetchForecastRowsPaginated(() =>
           supabase
@@ -298,15 +329,55 @@ export default function ForecastPage() {
           f.description.toLowerCase().includes(searchLower)
         )
 
-  // Calculate summary stats
-  const totalForecast = filteredForecasts
-    .filter(f => f.month === currentMonth)
-    .reduce((sum, f) => sum + f.forecastValue, 0)
-  const totalBudget = filteredForecasts
-    .filter(f => f.month === currentMonth)
-    .reduce((sum, f) => sum + f.budgetValue, 0)
-  const totalVariance = totalForecast - totalBudget
-  const variancePercent = totalBudget !== 0 ? (totalVariance / totalBudget) * 100 : 0
+  // Chart: when "All Categories" show KPI-only totals (same as summary cards); otherwise show selected category
+  const chartForecasts =
+    selectedDescription === "all"
+      ? forecasts.filter((f) => {
+          const d = normDesc(f.description)
+          return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
+        })
+      : filteredForecasts
+
+  // Summary stats: use KPIs only (revenue + expenses), not sum of all lines (which inflates to 193M+)
+  const monthRows = filteredForecasts.filter(f => f.month === currentMonth)
+  let revenueForecast = 0
+  let revenueBudget = 0
+  let expenseForecast = 0
+  let expenseBudget = 0
+  monthRows.forEach(f => {
+    const d = normDesc(f.description)
+    if (d === KPI_REVENUE) {
+      revenueForecast += f.forecastValue
+      revenueBudget += f.budgetValue
+    } else if (KPI_EXPENSE_LINES.has(d)) {
+      expenseForecast += f.forecastValue
+      expenseBudget += f.budgetValue
+    }
+  })
+  const revenueVariance = revenueForecast - revenueBudget
+  const revenueVariancePct = revenueBudget !== 0 ? (revenueVariance / revenueBudget) * 100 : 0
+  const expenseVariance = expenseForecast - expenseBudget
+  const expenseVariancePct = expenseBudget !== 0 ? (expenseVariance / expenseBudget) * 100 : 0
+
+  // Full-year totals (all 12 months) for HQ — used for annual 2026 display and chart
+  const allMonthRows = forecasts.filter(f => {
+    const d = normDesc(f.description)
+    return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
+  })
+  let annualRevenueForecast = 0
+  let annualRevenueBudget = 0
+  let annualExpenseForecast = 0
+  let annualExpenseBudget = 0
+  allMonthRows.forEach(f => {
+    const d = normDesc(f.description)
+    if (d === KPI_REVENUE) {
+      annualRevenueForecast += f.forecastValue
+      annualRevenueBudget += f.budgetValue
+    } else if (KPI_EXPENSE_LINES.has(d)) {
+      annualExpenseForecast += f.forecastValue
+      annualExpenseBudget += f.budgetValue
+    }
+  })
 
   const exportToCSV = () => {
     const headers = ["Description", "Month", "Forecast", "Budget", "Variance", "Variance %"]
@@ -539,63 +610,111 @@ export default function ForecastPage() {
         </Alert>
       )}
 
-      {(selectedBranch === ALL_BRANCHES_ID || (selectedBranch && selectedBranch !== ALL_BRANCHES_ID)) && forecasts.length > 0 && (
+      {(selectedBranch === ALL_BRANCHES_ID || (selectedBranch && selectedBranch !== ALL_BRANCHES_ID)) && (loading || forecasts.length > 0) && (
         <>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="secondary">{viewLevelLabel}</Badge>
-            <span>— comparing budget to forecast for selected month</span>
+            <span>
+              {loading ? "Loading…" : "— comparing budget to forecast for selected month"}
+            </span>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Forecast (current month)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalForecast)}</div>
-                <p className="text-xs text-muted-foreground">
-                  {getShortMonthName(currentMonth)} {currentYear}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Budget (current month)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalBudget)}</div>
-                <p className="text-xs text-muted-foreground">
-                  {currentYear} budget target
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Variance (Forecast − Budget)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <span className={`text-2xl font-bold ${totalVariance >= 0 ? "text-accent" : "text-destructive"}`}>
-                    {formatCurrency(Math.abs(totalVariance))}
-                  </span>
-                  {totalVariance >= 0 ? (
-                    <TrendingUp className="h-5 w-5 text-accent" />
-                  ) : (
-                    <TrendingDown className="h-5 w-5 text-destructive" />
-                  )}
-                </div>
-                <Badge variant={totalVariance >= 0 ? "default" : "destructive"} className="mt-1">
-                  {formatPercent(variancePercent)}
-                </Badge>
-              </CardContent>
-            </Card>
+          {!loading && forecasts.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="border-primary/20 bg-primary/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {currentYear} full year · Revenue
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-bold">Forecast {formatCurrency(annualRevenueForecast)}</div>
+                  <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualRevenueBudget)}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-primary/20 bg-primary/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {currentYear} full year · Expenses
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-bold">Forecast {formatCurrency(annualExpenseForecast)}</div>
+                  <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualExpenseBudget)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {loading ? (
+              <>
+                {[1, 2, 3, 4].map((i) => (
+                  <Card key={i}>
+                    <CardHeader className="pb-2">
+                      <Skeleton className="h-4 w-24" />
+                    </CardHeader>
+                    <CardContent>
+                      <Skeleton className="h-8 w-28 mb-2" />
+                      <Skeleton className="h-3 w-20" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
+            ) : (
+              <>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total revenue · Forecast
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(revenueForecast)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {getShortMonthName(currentMonth)} {currentYear}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total revenue · Budget
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(revenueBudget)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Variance {revenueVariance >= 0 ? "+" : ""}{formatCurrency(revenueVariance)} ({formatPercent(revenueVariancePct)})
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total expenses · Forecast
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(expenseForecast)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {getShortMonthName(currentMonth)} {currentYear}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total expenses · Budget
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(expenseBudget)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Variance {expenseVariance >= 0 ? "+" : ""}{formatCurrency(expenseVariance)} ({formatPercent(expenseVariancePct)})
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
 
           <Card>
@@ -657,7 +776,7 @@ export default function ForecastPage() {
                 </TabsList>
                 <TabsContent value="chart" className="mt-4">
                   <ForecastChart 
-                    forecasts={filteredForecasts} 
+                    forecasts={chartForecasts} 
                     currentMonth={currentMonth}
                   />
                 </TabsContent>
