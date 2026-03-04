@@ -214,9 +214,26 @@ export default function ForecastPage() {
             .eq("month", currentMonth)
         )
         if (monthRows.length > 0) {
-          setForecasts(aggregate(monthRows))
+          const newMonthAgg = aggregate(monthRows)
+          setForecasts((prev) => {
+            const hasFullYear = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) =>
+              prev.some((f) => f.month === m)
+            )
+            if (!hasFullYear || prev.length === 0) return newMonthAgg
+            const otherMonths = prev.filter((f) => f.month !== currentMonth)
+            const merged = [...otherMonths, ...newMonthAgg].sort(
+              (a, b) => a.description.localeCompare(b.description) || a.month - b.month
+            )
+            return merged
+          })
         } else {
-          setForecasts([])
+          setForecasts((prev) => {
+            const hasFullYear = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) =>
+              prev.some((f) => f.month === m)
+            )
+            if (!hasFullYear) return []
+            return prev.filter((f) => f.month !== currentMonth)
+          })
         }
         setLoading(false)
         // Phase 2: fetch all 12 months in background (chunk branches to avoid timeouts/limits)
