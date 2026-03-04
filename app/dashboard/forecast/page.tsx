@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,6 +65,7 @@ export default function ForecastPage() {
     return m >= 1 && m <= 12 ? m : 1
   })
   const supabase = createClient()
+  const lastFetchedKeyRef = useRef<string | null>(null)
 
   const regionsList = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>()
@@ -218,6 +219,9 @@ export default function ForecastPage() {
                 .select("*")
                 .in("branch_id", ids)
                 .eq("year", currentYear)
+                .order("branch_id")
+                .order("month")
+                .order("description")
             )
           )
         )
@@ -234,6 +238,8 @@ export default function ForecastPage() {
             .select("*")
             .eq("branch_id", selectedBranch)
             .eq("year", currentYear)
+            .order("month")
+            .order("description")
         )
 
         if (existingForecasts && existingForecasts.length > 0) {
@@ -261,10 +267,13 @@ export default function ForecastPage() {
   }, [selectedBranch, selectedRegionId, supabase, currentYear, branches, fetchForecastRowsPaginated])
 
   useEffect(() => {
-    if (selectedBranch) {
-      loadForecasts()
-    }
-  }, [selectedBranch, selectedRegionId, currentYear, loadForecasts])
+    if (!selectedBranch) return
+    const branchCount = selectedBranch === ALL_BRANCHES_ID ? branches.length : 0
+    const key = `${selectedBranch}-${selectedRegionId}-${currentYear}-${branchCount}`
+    if (lastFetchedKeyRef.current === key) return
+    lastFetchedKeyRef.current = key
+    loadForecasts()
+  }, [selectedBranch, selectedRegionId, currentYear, branches.length, loadForecasts])
 
   const handleUpdateForecast = async (description: string, month: number, newValue: number) => {
     if (!selectedBranch || selectedBranch === ALL_BRANCHES_ID) return
