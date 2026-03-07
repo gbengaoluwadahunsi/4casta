@@ -21,7 +21,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Pencil, Check, X, Loader2 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Pencil, Check, X, Loader2, Calendar, CalendarDays } from "lucide-react"
 import { type ForecastResult, getShortMonthName, formatCurrency, formatPercent } from "@/lib/forecasting"
 import { cn } from "@/lib/utils"
 
@@ -48,12 +49,15 @@ export function ForecastTable({
   const [editValue, setEditValue] = useState<string>("")
   const [saving, setSaving] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [showAllMonths, setShowAllMonths] = useState(true)
 
   // Group by description
   const descriptions = [...new Set(forecasts.map(f => f.description))]
   
-  // Get unique months
-  const months = Array.from({ length: 12 }, (_, i) => i + 1)
+  // Get months to display: all 12 or only current month
+  const months = showAllMonths
+    ? Array.from({ length: 12 }, (_, i) => i + 1)
+    : [currentMonth]
 
   const handleCellClick = (description: string, month: number, currentValue: number) => {
     if (!editable || !onUpdateForecast) return
@@ -86,6 +90,28 @@ export function ForecastTable({
 
   return (
     <>
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-all-months"
+            checked={showAllMonths}
+            onCheckedChange={setShowAllMonths}
+          />
+          <Label htmlFor="show-all-months" className="text-sm font-normal cursor-pointer flex items-center gap-2">
+            {showAllMonths ? (
+              <>
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                All months
+              </>
+            ) : (
+              <>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                {getShortMonthName(currentMonth)} only
+              </>
+            )}
+          </Label>
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

@@ -31,6 +31,7 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [fullName, setFullName] = useState("")
+  const [role, setRole] = useState<"branch_user" | "region_admin">("branch_user")
   const [regionId, setRegionId] = useState<string>("")
   const [branchId, setBranchId] = useState<string>("")
   const [regions, setRegions] = useState<Region[]>([])
@@ -39,10 +40,6 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-
-  // Public sign-up is for Branch Users only. HQ Admin and Region Admin are
-  // created by an existing HQ admin (Dashboard → Users or Supabase).
-  const role = "branch_user"
 
   useEffect(() => {
     const fetchData = async () => {
@@ -60,19 +57,29 @@ export default function SignUpPage() {
   useEffect(() => {
     if (regionId) {
       setFilteredBranches(branches.filter((b) => b.region_id === regionId))
-      setBranchId("")
+      if (role === "branch_user") setBranchId("")
     } else {
       setFilteredBranches([])
+      setBranchId("")
     }
-  }, [regionId, branches])
+  }, [regionId, branches, role])
+
+  useEffect(() => {
+    if (role === "region_admin") setBranchId("")
+  }, [role])
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    if (!regionId || !branchId) {
-      setError("Please select your region and branch")
+    if (!regionId) {
+      setError("Please select your region")
+      setLoading(false)
+      return
+    }
+    if (role === "branch_user" && !branchId) {
+      setError("Please select your branch")
       setLoading(false)
       return
     }
@@ -93,7 +100,7 @@ export default function SignUpPage() {
           full_name: fullName,
           role: role,
           region_id: regionId || null,
-          branch_id: branchId || null,
+          branch_id: role === "branch_user" ? branchId || null : null,
         },
       },
     })
@@ -111,7 +118,7 @@ export default function SignUpPage() {
         .from("profiles")
         .update({
           region_id: regionId || null,
-          branch_id: branchId || null,
+          branch_id: role === "branch_user" ? branchId || null : null,
         })
         .eq("id", userData.user.id)
     }
@@ -127,7 +134,9 @@ export default function SignUpPage() {
             <Image src="/orkinlogo.png" alt="Orkin" width={140} height={40} className="h-10 w-auto" priority />
           </div>
           <CardTitle className="text-2xl">Create account</CardTitle>
-          <CardDescription>Sign up as a Branch User to access the Orkin forecasting system</CardDescription>
+          <CardDescription>
+            Sign up to access the Orkin forecasting system. Choose your role below.
+          </CardDescription>
         </CardHeader>
         <form onSubmit={handleSignUp}>
           <CardContent className="space-y-4">
@@ -187,6 +196,18 @@ export default function SignUpPage() {
               </div>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as "branch_user" | "region_admin")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="branch_user">Branch User — access one branch</SelectItem>
+                  <SelectItem value="region_admin">Region Admin — access all branches in a region</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="region">Region</Label>
               <Select value={regionId} onValueChange={setRegionId}>
                 <SelectTrigger>
@@ -201,42 +222,52 @@ export default function SignUpPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="branch">Branch</Label>
-              <Select
-                value={branchId}
-                onValueChange={setBranchId}
-                disabled={!regionId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={regionId ? "Select your branch" : "Select a region first"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {regionId ? (
-                    filteredBranches.length > 0 ? (
-                      filteredBranches.map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </SelectItem>
-                      ))
+            {role === "branch_user" && (
+              <div className="space-y-2">
+                <Label htmlFor="branch">Branch</Label>
+                <Select
+                  value={branchId}
+                  onValueChange={setBranchId}
+                  disabled={!regionId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={regionId ? "Select your branch" : "Select a region first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regionId ? (
+                      filteredBranches.length > 0 ? (
+                        filteredBranches.map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="py-2 px-2 text-sm text-muted-foreground">No branches in this region</div>
+                      )
                     ) : (
-                      <div className="py-2 px-2 text-sm text-muted-foreground">No branches in this region</div>
-                    )
-                  ) : (
-                    <div className="py-2 px-2 text-sm text-muted-foreground">Select a region first</div>
-                  )}
-                </SelectContent>
-              </Select>
-              {regionId && !branchId && (
-                <p className="text-sm text-muted-foreground">Select a branch in your region</p>
-              )}
-            </div>
+                      <div className="py-2 px-2 text-sm text-muted-foreground">Select a region first</div>
+                    )}
+                  </SelectContent>
+                </Select>
+                {regionId && !branchId && (
+                  <p className="text-sm text-muted-foreground">Select a branch in your region</p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Need an HQ Admin or Region Admin account? Ask your administrator to create one
+              Need an HQ Admin account? Ask your administrator to create one.
             </p>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={loading || !regionId || !branchId}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={
+                loading ||
+                !regionId ||
+                (role === "branch_user" && !branchId)
+              }
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
