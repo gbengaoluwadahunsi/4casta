@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { LineChart, Building2, MapPin, TrendingUp, AlertCircle } from "lucide-react"
@@ -21,12 +22,21 @@ export default async function DashboardPage() {
   let branchesCount: number | null = 1
   if (profile?.role === "branch_user") {
     branchesCount = 1
-  } else if (profile?.role === "region_admin" && profile.region_id) {
-    const { count } = await supabase
-      .from("branches")
-      .select("*", { count: "exact", head: true })
-      .eq("region_id", profile.region_id)
-    branchesCount = count
+  } else if (profile?.role === "region_admin") {
+    if (profile.region_id) {
+      try {
+        const admin = createAdminClient()
+        const { count } = await admin
+          .from("branches")
+          .select("*", { count: "exact", head: true })
+          .eq("region_id", profile.region_id)
+        branchesCount = count
+      } catch {
+        branchesCount = 0
+      }
+    } else {
+      branchesCount = 0
+    }
   } else if (profile?.role === "hq_admin") {
     const { count } = await supabase
       .from("branches")
@@ -75,6 +85,15 @@ export default async function DashboardPage() {
             Your branch has not been assigned yet. You need a branch assignment to view forecasts and activity.
             Please contact your administrator to assign your branch, or if you signed up recently, ensure you selected
             your region and branch during registration.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {profile?.role === "region_admin" && !profile?.region_id && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Your region is not assigned. Contact your administrator to set your region in User Management so you can view branches and forecasts.
           </AlertDescription>
         </Alert>
       )}

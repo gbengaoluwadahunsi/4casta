@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import { ArrowLeft, MapPin } from "lucide-react"
 import Link from "next/link"
@@ -26,19 +27,31 @@ export default async function BranchesPage({ searchParams }: Props) {
     redirect("/dashboard")
   }
 
-  // Region admin: only their region. HQ: all branches, or one region when drilling down from Regions.
-  let branchesQuery = supabase
-    .from("branches")
-    .select("*, regions(name)")
-    .order("name")
-
+  // Use admin client for region admin to bypass RLS (ensures branches load when grouped under regions)
+  let branches: { id: string; name: string; region_id: string; regions?: { name: string } | null }[] = []
   if (profile?.role === "region_admin" && profile.region_id) {
-    branchesQuery = branchesQuery.eq("region_id", profile.region_id)
-  } else if (profile?.role === "hq_admin" && regionId) {
-    branchesQuery = branchesQuery.eq("region_id", regionId)
+    try {
+      const admin = createAdminClient()
+      const { data } = await admin
+        .from("branches")
+        .select("*, regions(name)")
+        .eq("region_id", profile.region_id)
+        .order("name")
+      branches = data ?? []
+    } catch {
+      branches = []
+    }
+  } else {
+    let branchesQuery = supabase
+      .from("branches")
+      .select("*, regions(name)")
+      .order("name")
+    if (profile?.role === "hq_admin" && regionId) {
+      branchesQuery = branchesQuery.eq("region_id", regionId)
+    }
+    const { data } = await branchesQuery
+    branches = data ?? []
   }
-
-  const { data: branches } = await branchesQuery
 
   // Region name for header: HQ drill-down from Regions, or region_admin's single region
   let regionName: string | null = null
@@ -169,7 +182,7 @@ export default async function BranchesPage({ searchParams }: Props) {
       </div>
 
       <BranchesList
-        branches={branches ?? []}
+        branches={branches}
         regions={regionsList ?? []}
         regionId={regionId ?? null}
         forecastByBranch={forecastByBranch}

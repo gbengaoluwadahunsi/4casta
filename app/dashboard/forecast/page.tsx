@@ -54,6 +54,7 @@ export default function ForecastPage() {
   const [selectedRegionId, setSelectedRegionId] = useState<string>(ALL_REGIONS_ID)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [forecasts, setForecasts] = useState<ForecastResult[]>([])
+  const [rawForecastRows, setRawForecastRows] = useState<{ branch_id: string; description: string; month: number; forecast_value: number; budget_value: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [needsBranchAssignment, setNeedsBranchAssignment] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +78,43 @@ export default function ForecastPage() {
     })
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [branches])
+
+  // Per-branch breakdown for region/HQ summary view (revenue + expenses for current month)
+  const branchBreakdown = useMemo(() => {
+    if (selectedBranch !== ALL_BRANCHES_ID || rawForecastRows.length === 0) return []
+    const monthRows = rawForecastRows.filter((r) => r.month === currentMonth)
+    const byBranch = new Map<
+      string,
+      { revenueForecast: number; revenueBudget: number; expenseForecast: number; expenseBudget: number }
+    >()
+    monthRows.forEach((r) => {
+      const desc = String(r.description ?? "").toUpperCase().trim()
+      const cur = byBranch.get(r.branch_id) || {
+        revenueForecast: 0,
+        revenueBudget: 0,
+        expenseForecast: 0,
+        expenseBudget: 0,
+      }
+      if (desc === KPI_REVENUE) {
+        cur.revenueForecast += Number(r.forecast_value ?? 0)
+        cur.revenueBudget += Number(r.budget_value ?? 0)
+      } else if (KPI_EXPENSE_LINES.has(desc)) {
+        cur.expenseForecast += Number(r.forecast_value ?? 0)
+        cur.expenseBudget += Number(r.budget_value ?? 0)
+      }
+      byBranch.set(r.branch_id, cur)
+    })
+    return branches
+      .filter((b) => byBranch.has(b.id))
+      .map((b) => {
+        const data = byBranch.get(b.id)!
+        return {
+          branch: b,
+          ...data,
+        }
+      })
+      .sort((a, b) => a.branch.name.localeCompare(b.branch.name))
+  }, [selectedBranch, rawForecastRows, currentMonth, branches])
 
   const years = [2024, 2025, 2026, 2027, 2028]
   const months = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: getShortMonthName(i + 1) }))
@@ -132,18 +170,25 @@ export default function ForecastPage() {
           setSelectedBranch(ALL_BRANCHES_ID)
         }
 
-        let query = supabase
-          .from("branches")
-          .select("*, regions(name)")
-          .order("name")
-        if (profileData.role === "region_admin" && profileData.region_id) {
-          query = query.eq("region_id", profileData.region_id)
-        }
-        const { data: branchData } = await query
-        if (branchData) {
+        // Use API for branches to avoid RLS issues (region admin may not get branches via client)
+        const res = await fetch("/api/branches")
+        const { branches: branchData } = res.ok ? await res.json().catch(() => ({})) : { branches: null }
+        if (branchData && Array.isArray(branchData)) {
           setBranches(branchData)
           if (branchFromUrl && branchData.some((b: Branch) => b.id === branchFromUrl)) {
             setSelectedBranch(branchFromUrl)
+          }
+        } else if (profileData.role === "hq_admin") {
+          // Fallback for HQ: direct query (RLS allows all)
+          const { data } = await supabase
+            .from("branches")
+            .select("*, regions(name)")
+            .order("name")
+          if (data) {
+            setBranches(data)
+            if (branchFromUrl && data.some((b: Branch) => b.id === branchFromUrl)) {
+              setSelectedBranch(branchFromUrl)
+            }
           }
         }
       }
@@ -165,6 +210,7 @@ export default function ForecastPage() {
           : branches.map((b: Branch) => b.id)
         if (branchIds.length === 0) {
           setForecasts([])
+          setRawForecastRows([])
           setLoading(false)
           return
         }
@@ -231,8 +277,10 @@ export default function ForecastPage() {
         const allRows = results.flat()
         if (allRows.length > 0) {
           setForecasts(aggregate(allRows))
+          setRawForecastRows(allRows)
         } else {
           setForecasts([])
+          setRawForecastRows([])
         }
       } else {
         const existingForecasts = await fetchForecastRowsPaginated(() =>
@@ -260,6 +308,7 @@ export default function ForecastPage() {
         } else {
           setForecasts([])
         }
+        setRawForecastRows([])
       }
     } catch (err) {
       console.error("Error loading forecasts:", err)
@@ -741,6 +790,51 @@ export default function ForecastPage() {
             )}
           </div>
 
+          {selectedBranch === ALL_BRANCHES_ID && branchBreakdown.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Branch contribution · {getShortMonthName(currentMonth)} {currentYear}</CardTitle>
+                <CardDescription>
+                  Each branch&apos;s contribution to revenue and expenses. Compare side by side.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[600px] text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-2 font-medium">Branch</th>
+                        <th className="text-right py-3 px-2 font-medium">Revenue Forecast</th>
+                        <th className="text-right py-3 px-2 font-medium">Revenue Budget</th>
+                        <th className="text-right py-3 px-2 font-medium">Expense Forecast</th>
+                        <th className="text-right py-3 px-2 font-medium">Expense Budget</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {branchBreakdown.map((row) => (
+                        <tr key={row.branch.id} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-2 px-2 font-medium">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBranch(row.branch.id)}
+                              className="text-primary hover:underline text-left"
+                            >
+                              {row.branch.name}
+                            </button>
+                          </td>
+                          <td className="text-right py-2 px-2">{formatCurrency(row.revenueForecast)}</td>
+                          <td className="text-right py-2 px-2 text-muted-foreground">{formatCurrency(row.revenueBudget)}</td>
+                          <td className="text-right py-2 px-2">{formatCurrency(row.expenseForecast)}</td>
+                          <td className="text-right py-2 px-2 text-muted-foreground">{formatCurrency(row.expenseBudget)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-4">
@@ -833,9 +927,19 @@ export default function ForecastPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <LineChart className="h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold">No Summary Data Yet</h2>
+            <h2 className="text-xl font-semibold">
+              {profile?.role === "region_admin" && branches.length === 0
+                ? "No branches in your region"
+                : "No Summary Data Yet"}
+            </h2>
             <p className="text-muted-foreground mt-2 text-center max-w-md">
-              Forecasts are derived from each branch&apos;s three-year data. Select a branch to view its forecasts; the summary here will show totals once branch forecasts are available.
+              {profile?.role === "region_admin" && branches.length === 0 ? (
+                <>Your region has no branches assigned. Contact your administrator to assign branches to your region.</>
+              ) : profile?.role === "region_admin" ? (
+                <>No forecast data has been generated for the branches in your region yet. Forecasts are derived from imported Excel data. Contact your administrator to import data, or select a branch below to check if it has forecasts.</>
+              ) : (
+                <>Forecasts are derived from each branch&apos;s three-year data. Select a branch to view its forecasts; the summary here will show totals once branch forecasts are available.</>
+              )}
             </p>
           </CardContent>
         </Card>
