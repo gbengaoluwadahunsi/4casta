@@ -22,9 +22,23 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Pencil, Check, X, Loader2, Calendar, CalendarDays } from "lucide-react"
+import { Pencil, Check, X, Loader2, Calendar, CalendarDays, TrendingUp, TrendingDown, BarChart3 } from "lucide-react"
 import { type ForecastResult, getShortMonthName, formatCurrency, formatPercent } from "@/lib/forecasting"
 import { cn } from "@/lib/utils"
+
+const KPI_REVENUE = "TOTAL NET REVENUE"
+const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
+
+function normDesc(s: string) {
+  return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim()
+}
+
+function isKpiLine(description: string) {
+  const d = normDesc(description)
+  return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
+}
+
+type ViewMode = "revenue" | "expenses" | "both"
 
 type ForecastTableProps = {
   forecasts: ForecastResult[]
@@ -50,9 +64,18 @@ export function ForecastTable({
   const [saving, setSaving] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [showAllMonths, setShowAllMonths] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>("both")
 
-  // Group by description
-  const descriptions = [...new Set(forecasts.map(f => f.description))]
+  // Filter forecasts by view mode
+  const filteredForecasts = forecasts.filter((f) => {
+    const d = normDesc(f.description)
+    if (viewMode === "revenue") return d === KPI_REVENUE
+    if (viewMode === "expenses") return d !== KPI_REVENUE // all non-revenue lines (expenses + overhead)
+    return true
+  })
+
+  // Group by description (from filtered forecasts)
+  const descriptions = [...new Set(filteredForecasts.map(f => f.description))]
   
   // Get months to display: all 12 or only current month
   const months = showAllMonths
@@ -88,11 +111,58 @@ export function ForecastTable({
     setEditValue("")
   }
 
+  // Total row: sum only lines matching view mode
+  const totalFilter = (f: ForecastResult) => {
+    const d = normDesc(f.description)
+    if (viewMode === "revenue") return d === KPI_REVENUE
+    if (viewMode === "expenses") return KPI_EXPENSE_LINES.has(d)
+    return isKpiLine(f.description)
+  }
+
   return (
     <>
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-2">
-          <Switch
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">Show:</Label>
+            <div className="flex rounded-lg border border-input bg-muted/30 p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("revenue")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  viewMode === "revenue" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                Revenue
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("expenses")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  viewMode === "expenses" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <TrendingDown className="h-3.5 w-3.5" />
+                Expenses
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("both")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  viewMode === "both" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Both
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
             id="show-all-months"
             checked={showAllMonths}
             onCheckedChange={setShowAllMonths}
@@ -110,6 +180,7 @@ export function ForecastTable({
               </>
             )}
           </Label>
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -133,7 +204,7 @@ export function ForecastTable({
           </TableHeader>
           <TableBody>
             {descriptions.map(description => {
-              const descForecasts = forecasts.filter(f => f.description === description)
+              const descForecasts = filteredForecasts.filter(f => f.description === description)
               const ytdTotal = descForecasts.reduce((sum, f) => sum + f.forecastValue, 0)
               
               return (
@@ -186,10 +257,15 @@ export function ForecastTable({
               )
             })}
             <TableRow className="bg-muted/50 font-bold">
-              <TableCell className="sticky left-0 bg-muted/50 z-10">Total</TableCell>
+              <TableCell className="sticky left-0 bg-muted/50 z-10">
+                Total{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  ({viewMode === "revenue" ? "Revenue" : viewMode === "expenses" ? "Expenses" : "Revenue + Expenses"})
+                </span>
+              </TableCell>
               {months.map(month => {
                 const monthTotal = forecasts
-                  .filter(f => f.month === month)
+                  .filter(f => f.month === month && totalFilter(f))
                   .reduce((sum, f) => sum + f.forecastValue, 0)
                 const isCurrentMonth = month === currentMonth
                 
@@ -206,7 +282,11 @@ export function ForecastTable({
                 )
               })}
               <TableCell className="text-right">
-                {formatCurrency(forecasts.reduce((sum, f) => sum + f.forecastValue, 0))}
+                {formatCurrency(
+                  forecasts
+                    .filter(f => totalFilter(f))
+                    .reduce((sum, f) => sum + f.forecastValue, 0)
+                )}
               </TableCell>
             </TableRow>
           </TableBody>
