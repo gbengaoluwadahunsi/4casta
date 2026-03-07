@@ -116,6 +116,7 @@ export default async function UsersPage() {
               users={users}
               regions={regions ?? []}
               branches={branches ?? []}
+              currentUserId={user.id}
             />
           ) : (
             <div className="flex flex-col items-center justify-center py-12">

@@ -11,15 +11,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, UserPlus } from "lucide-react"
 
 type Region = { id: string; name: string }
+type Branch = { id: string; name: string; region_id: string }
 
-export function CreateAccountForm({ regions }: { regions: Region[] }) {
+export function CreateAccountForm({ regions, branches }: { regions: Region[]; branches: Branch[] }) {
   const router = useRouter()
   const [email, setEmail] = useState("")
-  const [role, setRole] = useState<"hq_admin" | "region_admin" | "">("")
+  const [role, setRole] = useState<"hq_admin" | "region_admin" | "branch_user" | "">("")
   const [regionId, setRegionId] = useState("")
+  const [branchId, setBranchId] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const filteredBranches = regionId ? branches.filter((b) => b.region_id === regionId) : []
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,11 +33,15 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
       return
     }
     if (!role) {
-      setError("Please select a role (HQ Admin or Region Admin)")
+      setError("Please select a role")
       return
     }
-    if (role === "region_admin" && !regionId) {
-      setError("Please select a region for Region Admin")
+    if ((role === "region_admin" || role === "branch_user") && !regionId) {
+      setError("Please select a region")
+      return
+    }
+    if (role === "branch_user" && !branchId) {
+      setError("Please select a branch for Branch User")
       return
     }
 
@@ -48,7 +56,8 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
         body: JSON.stringify({
           email: trimmed,
           role,
-          region_id: role === "region_admin" ? regionId : null,
+          region_id: role === "hq_admin" ? null : regionId || null,
+          branch_id: role === "branch_user" ? branchId || null : null,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -62,6 +71,7 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
       setEmail("")
       setRole("")
       setRegionId("")
+      setBranchId("")
       router.refresh()
     } finally {
       setLoading(false)
@@ -73,10 +83,10 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-5 w-5" />
-          Create HQ or Region Admin account
+          Create account
         </CardTitle>
         <CardDescription>
-          Enter their email and choose the role. They will receive an invite and get the right access when they sign in.
+          Enter their email and choose the role (HQ Admin, Region Admin, or Branch User). They will receive an invite and get the right access when they sign in.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -94,7 +104,7 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
 
           <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
-            <Select value={role} onValueChange={(v) => { setRole(v as "hq_admin" | "region_admin" | ""); setRegionId("") }}>
+            <Select value={role} onValueChange={(v) => { setRole(v as "hq_admin" | "region_admin" | "branch_user" | ""); setRegionId(""); setBranchId("") }}>
               <SelectTrigger id="role">
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
@@ -105,14 +115,17 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
                 <SelectItem value="region_admin">
                   Region Admin — access to one region and its branches
                 </SelectItem>
+                <SelectItem value="branch_user">
+                  Branch User — access to one branch only
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {role === "region_admin" && (
+          {(role === "region_admin" || role === "branch_user") && (
             <div className="space-y-2">
               <Label htmlFor="region">Region</Label>
-              <Select value={regionId} onValueChange={setRegionId} required={role === "region_admin"}>
+              <Select value={regionId} onValueChange={(v) => { setRegionId(v); setBranchId("") }}>
                 <SelectTrigger id="region">
                   <SelectValue placeholder="Select region" />
                 </SelectTrigger>
@@ -120,6 +133,24 @@ export function CreateAccountForm({ regions }: { regions: Region[] }) {
                   {regions.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {role === "branch_user" && regionId && (
+            <div className="space-y-2">
+              <Label htmlFor="branch">Branch</Label>
+              <Select value={branchId} onValueChange={setBranchId}>
+                <SelectTrigger id="branch">
+                  <SelectValue placeholder="Select branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredBranches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

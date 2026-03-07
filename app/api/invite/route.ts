@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const role = body?.role === "hq_admin" || body?.role === "region_admin" ? body.role : null
+    const role = body?.role === "hq_admin" || body?.role === "region_admin" || body?.role === "branch_user" ? body.role : null
     const regionId = typeof body?.region_id === "string" ? body.region_id : null
     const branchId = typeof body?.branch_id === "string" ? body.branch_id : null
 
@@ -82,7 +82,9 @@ export async function POST(request: NextRequest) {
         ? "They will have full HQ Admin access when they sign in."
         : role === "region_admin"
           ? "They will have Region Admin access for the selected region when they sign in."
-          : "When they sign in, edit their profile on the Users page to set role, region, and branch."
+          : role === "branch_user"
+            ? "They will have Branch User access for the selected branch when they sign in."
+            : "When they sign in, edit their profile on the Users page to set role, region, and branch."
 
     return NextResponse.json({
       success: true,

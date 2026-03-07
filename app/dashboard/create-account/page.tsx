@@ -23,16 +23,21 @@ export default async function CreateAccountPage() {
     .select("id, name")
     .order("name")
 
+  const { data: branches } = await supabase
+    .from("branches")
+    .select("id, name, region_id")
+    .order("name")
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Create account</h1>
         <p className="text-muted-foreground mt-1">
-          Invite an HQ Admin or Region Admin by email. They will get the correct access when they sign in.
+          Invite a user by email. Choose HQ Admin, Region Admin, or Branch User. They will get the correct access when they sign in.
         </p>
       </div>
 
-      <CreateAccountForm regions={regions ?? []} />
+      <CreateAccountForm regions={regions ?? []} branches={branches ?? []} />
     </div>
   )
 }

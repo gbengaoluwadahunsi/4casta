@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -12,8 +13,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { EditUserDialog } from "@/components/dashboard/edit-user-dialog"
-import { Users, Pencil } from "lucide-react"
+import { Users, Pencil, Trash2, Loader2 } from "lucide-react"
+import { deleteUser } from "@/app/dashboard/users/actions"
 
 type Region = { id: string; name: string }
 type Branch = { id: string; name: string; region_id: string; regions?: { name: string } | null }
@@ -39,10 +50,14 @@ type Props = {
   users: UserRow[]
   regions: Region[]
   branches: Branch[]
+  currentUserId?: string
 }
 
-export function UsersTable({ users, regions, branches }: Props) {
+export function UsersTable({ users, regions, branches, currentUserId }: Props) {
+  const router = useRouter()
   const [editingUser, setEditingUser] = useState<UserRow | null>(null)
+  const [deletingUser, setDeletingUser] = useState<UserRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   return (
     <>
@@ -95,14 +110,27 @@ export function UsersTable({ users, regions, branches }: Props) {
                   {new Date(u.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setEditingUser(u)}
-                    aria-label="Edit user"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setEditingUser(u)}
+                      aria-label="Edit user"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    {currentUserId && u.id !== currentUserId && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setDeletingUser(u)}
+                        aria-label="Delete user"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             )
@@ -119,6 +147,39 @@ export function UsersTable({ users, regions, branches }: Props) {
           onOpenChange={(open) => !open && setEditingUser(null)}
         />
       )}
+
+      <AlertDialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deletingUser?.full_name || "Unnamed"} ({deletingUser?.email})?
+              This will remove their account and they will no longer be able to sign in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={async () => {
+                if (!deletingUser) return
+                setDeleting(true)
+                const result = await deleteUser(deletingUser.id)
+                setDeleting(false)
+                if (result.error) {
+                  alert(result.error)
+                  return
+                }
+                setDeletingUser(null)
+                router.refresh()
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
