@@ -817,9 +817,10 @@ export default function ForecastPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedBranch(row.branch.id)}
-                              className="text-primary hover:underline text-left"
+                              className="text-primary hover:underline text-left inline-flex items-center gap-1.5"
                             >
                               {row.branch.name}
+                              <span className="text-xs text-muted-foreground font-normal">(edit)</span>
                             </button>
                           </td>
                           <td className="text-right py-2 px-2">{formatCurrency(row.revenueForecast)}</td>
@@ -881,6 +882,12 @@ export default function ForecastPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {selectedBranch === ALL_BRANCHES_ID && profile?.role !== "branch_user" && (
+                <div className="mb-4 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/40 rounded-md p-3 border border-amber-200 dark:border-amber-800">
+                  <Pencil className="h-4 w-4 shrink-0" />
+                  <span>To edit forecast values, select a specific branch from the dropdown above or click a branch name in the Branch contribution table.</span>
+                </div>
+              )}
               {selectedBranch !== ALL_BRANCHES_ID && (
                 <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
                   <Pencil className="h-4 w-4" />
