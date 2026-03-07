@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { LineChart, Building2, MapPin, TrendingUp } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { LineChart, Building2, MapPin, TrendingUp, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
 export default async function DashboardPage() {
@@ -49,6 +50,8 @@ export default async function DashboardPage() {
   const MONTHS_PER_YEAR = 12
   const forecastsCount = (branchesCount ?? 0) * MONTHS_PER_YEAR
 
+  const branchUserNeedsAssignment = profile?.role === "branch_user" && !profile?.branch_id
+
   return (
     <div className="space-y-6">
       <div>
@@ -64,6 +67,17 @@ export default async function DashboardPage() {
           )}
         </p>
       </div>
+
+      {branchUserNeedsAssignment && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Your branch has not been assigned yet. You need a branch assignment to view forecasts and activity.
+            Please contact your administrator to assign your branch, or if you signed up recently, ensure you selected
+            your region and branch during registration.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

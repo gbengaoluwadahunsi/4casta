@@ -73,6 +73,8 @@ Follow these steps to connect the app to Supabase.
 
 9. **If you have the old 6 regions and want GVR + branch redistribution:** run `scripts/005_gvr_region_and_redistribute.sql` in the SQL Editor. This adds **GVR REGION** and moves branches 030, 031, 033, 036 from Pacific to GVR (7 regions, 49 branches total).
 
+10. **If branch users see no information after sign-up (especially with email confirmation):** run `scripts/007_handle_new_user_region_branch.sql` in the SQL Editor. This updates the sign-up trigger so region and branch are stored when the profile is created, ensuring branch users get their assignment even when they confirm their email later.
+
 ---
 
 ## 5. Configure Auth redirect (email confirmation & password reset)

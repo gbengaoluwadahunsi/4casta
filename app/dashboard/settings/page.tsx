@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, User, Shield, Building2 } from "lucide-react"
+import { Loader2, CheckCircle, User, Shield, Building2, AlertCircle } from "lucide-react"
 
 type Profile = {
   id: string
@@ -152,6 +152,16 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {profile?.role === "branch_user" && !profile?.branch_id && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Your branch has not been assigned yet. You need a branch assignment to view forecasts and activity.
+            Contact your administrator to assign your branch.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -181,15 +191,21 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {profile?.branches && (
+          {(profile?.role === "branch_user" || profile?.branches) && (
             <div className="flex items-center justify-between py-3">
               <div>
                 <p className="font-medium">Branch</p>
                 <p className="text-sm text-muted-foreground">Your assigned branch</p>
               </div>
               <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{profile.branches.name}</span>
+                {profile?.branches ? (
+                  <>
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{profile.branches.name}</span>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Not assigned</span>
+                )}
               </div>
             </div>
           )}

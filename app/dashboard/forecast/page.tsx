@@ -55,6 +55,7 @@ export default function ForecastPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [forecasts, setForecasts] = useState<ForecastResult[]>([])
   const [loading, setLoading] = useState(true)
+  const [needsBranchAssignment, setNeedsBranchAssignment] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedDescription, setSelectedDescription] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -119,6 +120,8 @@ export default function ForecastPage() {
           // Branch users always see their assigned branch — no selector
           if (profileData.branch_id) {
             setSelectedBranch(profileData.branch_id)
+          } else {
+            setNeedsBranchAssignment(true)
           }
           setLoading(false)
           return
@@ -421,6 +424,27 @@ export default function ForecastPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (needsBranchAssignment) {
+    return (
+      <div className="space-y-6 min-w-0">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Budget vs Forecast</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            View and generate forecasts for your branch.
+          </p>
+        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Your branch has not been assigned yet. You need a branch assignment to view and generate forecasts.
+            Please contact your administrator to assign your branch, or if you signed up recently, ensure you selected
+            your region and branch during registration.
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }

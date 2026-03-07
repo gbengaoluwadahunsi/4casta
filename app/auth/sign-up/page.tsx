@@ -92,6 +92,8 @@ export default function SignUpPage() {
         data: {
           full_name: fullName,
           role: role,
+          region_id: regionId || null,
+          branch_id: branchId || null,
         },
       },
     })
