@@ -68,7 +68,7 @@ export default function HomePage() {
               </div>
               <CardTitle>Smart Forecasting</CardTitle>
               <CardDescription>
-                Generate accurate monthly forecasts using seasonal patterns and trend analysis
+                Unbiased forecasts using seasonal naive + growth, working days, and seasonal index (2023–2025 history, no budget input).
               </CardDescription>
             </CardHeader>
           </Card>

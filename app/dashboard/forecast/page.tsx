@@ -18,7 +18,7 @@ import {
   type ForecastResult 
 } from "@/lib/forecasting"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ForecastChart } from "@/components/dashboard/forecast-chart"
+import { ForecastChart, ForecastBarChart } from "@/components/dashboard/forecast-chart"
 import { ForecastTable } from "@/components/dashboard/forecast-table"
 
 type Branch = {
@@ -587,7 +587,7 @@ export default function ForecastPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold">How the 2026 forecasts are generated</CardTitle>
           <CardDescription>
-            This app uses a single, unbiased time-series model (ETS – Holt–Winters additive) selected by backtesting on 2025 to generate all 2026 forecasts from 2023–2025 history.
+            This app uses Seasonal naive + growth + driver-based adjustments: 2025 seasonal pattern with YoY growth from 2024→2025, plus working days and seasonal index (unbiased, no budget input).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -617,32 +617,30 @@ export default function ForecastPage() {
               </p>
               <ul className="list-disc pl-5">
                 <li>
-                  <strong>Actuals:</strong> 2023–2025 branch-level monthly actuals imported from the three-year workbook using the import scripts.
+                  <strong>Actuals:</strong> 2023–2025 branch-level monthly actuals imported from the workbook using the import scripts.
                 </li>
                 <li>
-                  <strong>Budgets:</strong> 2026 branch-level monthly budgets imported from the per-branch 2026 budget files, one file per branch.
+                  <strong>Budgets:</strong> 2026 branch-level monthly budgets imported from the per-branch 2026 budget files (used for comparison only, not for forecasting).
                 </li>
               </ul>
               <p>
-                For each branch and each line item (for example <strong>TOTAL NET REVENUE</strong> or a specific expense line), we extract a 36-point monthly history from January 2023 to December 2025. That
-                series is cleaned by mapping description names consistently across years and deduplicating any duplicated (year, month, description) rows per branch.
+                For each branch and each line item (for example <strong>TOTAL NET REVENUE</strong> or a specific expense line), we use a 36-month history (2023–2025). The series is cleaned by mapping description names consistently across years and deduplicating any duplicated (year, month, description) rows per branch.
               </p>
               <p>
-                Several forecasting models were evaluated offline using a dedicated benchmark script: simple seasonal regression, SARIMA, ETS (Holt–Winters), and tree-based lag models. Each model was trained on
-                2023–2024 and then asked to forecast all months of 2025; we compared those forecasts to the true 2025 values using standard error metrics (MAE, RMSE, and MAPE). The ETS additive model
-                consistently had the best or near-best performance on 2025, so it was chosen as the single production model for 2026.
+                The forecast uses <strong>Seasonal naive + growth</strong> with a driver-based layer: it keeps the seasonal pattern from 2025 (which month is high/low), applies the YoY growth rate from 2024→2025, then adjusts for working days and a global seasonal index. No budget is used as input – the model is unbiased.
               </p>
               <p>
-                In production, the <strong>ETS (Holt–Winters additive)</strong> model is applied per branch and line item as follows:
+                Formula per branch and line item:
               </p>
               <ol className="list-decimal pl-5">
-                <li>For a given branch and description, build the monthly series of 2023–2025 forecast history (or actuals where appropriate).</li>
-                <li>Fit an ETS model with additive trend and additive seasonality (12-month period) on that 36-point series.</li>
-                <li>Forecast 12 steps ahead to obtain unbiased monthly forecasts for January–December 2026.</li>
-                <li>Write those forecasts into the <code>forecasts</code> table as <code>forecast_value</code>, keeping the 2026 <code>budget_value</code> untouched for comparison.</li>
+                <li>Start with 2025 same month (or 2024 if 2025 missing).</li>
+                <li>growth = (2025_annual ÷ 2024_annual) − 1 (or 0 if prior year has no data).</li>
+                <li>base[m] = max(0, 2025[m] × (1 + growth)).</li>
+                <li>Apply working days: base[m] × (wd_2026[m] ÷ wd_2025[m]).</li>
+                <li>Apply seasonal index (global pattern from 2023–2025 history).</li>
               </ol>
               <p>
-                The key point is that the model choice (ETS) and all its parameters were decided using only 2023–2025 data – primarily by how well each candidate predicted 2025 – and then frozen. When we
+                The key point is that the model uses only 2023–2025 history – no budget input. When we
                 generate 2026 forecasts, we do not look at 2026 actuals or adjust forecasts to match any known 2026 figures. This makes the 2026 numbers true model forecasts, suitable for honest
                 forecast-versus-budget comparison at branch, region, and HQ level.
               </p>
@@ -897,9 +895,16 @@ export default function ForecastPage() {
               <Tabs defaultValue="chart">
                 <TabsList>
                   <TabsTrigger value="chart">Chart</TabsTrigger>
+                  <TabsTrigger value="line">Line Graph</TabsTrigger>
                   <TabsTrigger value="table">Table</TabsTrigger>
                 </TabsList>
                 <TabsContent value="chart" className="mt-4">
+                  <ForecastBarChart 
+                    forecasts={chartForecasts} 
+                    currentMonth={currentMonth}
+                  />
+                </TabsContent>
+                <TabsContent value="line" className="mt-4">
                   <ForecastChart 
                     forecasts={chartForecasts} 
                     currentMonth={currentMonth}

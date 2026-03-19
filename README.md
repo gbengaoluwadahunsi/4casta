@@ -40,9 +40,7 @@ Monthly forecasting app for **46 operational branches** across 7 regions, with r
 | `pnpm start`| Start production server    |
 | `pnpm lint` | Run ESLint                 |
 | `pnpm test` | Run unit tests (Vitest)     |
-| `pnpm forecast:benchmark` | Compare forecasting models on 2025 backtest |
-| `pnpm forecast:rebuild` | Rebuild 2026 forecasts with ETS (best 2025 backtest) |
-| `pnpm forecast:rebuild:sarima` | Rebuild 2026 forecasts with SARIMA |
+| `pnpm forecast:rebuild` | Rebuild 2026 forecasts (Seasonal naive + growth + working days + seasonal index) — reprobes all branches |
 
 **Branch-by-branch import from Excel:** Use one file per branch and import with `node scripts/import-branch-file.mjs --branch <code|name> --file <path> --year <year>`. See **scripts/data/README.md**.
 
@@ -57,8 +55,8 @@ Use the documented spreadsheet layout in **[UPLOAD_FORMAT.md](./UPLOAD_FORMAT.md
 ## Forecasting and dates
 
 - Forecasts use historical actuals and budget data stored in Supabase.
-- Production forecasting uses **ETS (Holt–Winters additive)**, chosen by 2025 backtest as the best model. One model per branch/line item, trained on 2023–2025 monthly history. No bias; forecast from history only.
-- `budget_value` is kept separate from `forecast_value`; budget is not injected into the forecast formula.
+- Production forecasting uses **Seasonal naive + growth + driver-based layer**: 2025 seasonal pattern with YoY growth from 2024→2025, plus working days and seasonal index (unbiased, no budget input). Uses 2023–2025 history.
+- `budget_value` is kept separate from `forecast_value`; budget is for comparison only, not used in the forecast formula.
 - **Current month** and **forecast year** can be set on the Forecast page; underlying logic uses the selected year/month for “as of” and remaining months.
 - Server date is **UTC** for “current month” when not overridden.
 

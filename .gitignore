@@ -30,7 +30,7 @@ next-env.d.ts
 .DS_Store
 Thumbs.db
 
-# Python (ets-runner.py)
+# Python
 __pycache__/
 *.py[cod]
 *.pyo

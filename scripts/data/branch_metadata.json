@@ -1,0 +1,6 @@
+{
+  "_source": "Orkin Canada acquisitions (mypmp.net, Miller Thomson, LinkedIn)",
+  "_note": "Branches acquired by Orkin Canada. acquisition_date = YYYY-MM-DD when known.",
+  "028": { "acquisition_date": "2023-09-01", "name": "ATLAS", "former": "Atlas Pest and Wildlife Control", "region": "Pacific/GVR" },
+  "029": { "acquisition_date": "2023-05-15", "name": "VPC", "former": "Associated Victoria Pest Control", "region": "Pacific" }
+}

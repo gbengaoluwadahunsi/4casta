@@ -1,0 +1,6 @@
+# ML residual forecast layer
+# pip install -r requirements-ml.txt
+
+lightgbm>=4.0.0
+pandas>=2.0.0
+supabase>=2.0.0

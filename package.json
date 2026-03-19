@@ -9,11 +9,13 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clear-forecasts": "node clear-forecasts-and-budget.mjs",
+    "clear-forecasts": "node scripts/clear-forecasts-and-budget.mjs",
     "check-supabase": "node scripts/check-supabase.mjs",
-    "forecast:benchmark": "python scripts/ml_model_benchmark_2026.py",
     "forecast:rebuild": "node scripts/rebuild-2026-forecast-ets.mjs",
-    "forecast:rebuild:sarima": "node scripts/rebuild-2026-forecast-sarima.mjs"
+    "forecast:rebuild:ml": "node scripts/rebuild-2026-forecast-ets.mjs && python scripts/ml_residual_forecast.py",
+    "forecast:ml-residual": "python scripts/ml_residual_forecast.py",
+    "forecast:compare": "node scripts/compare-2026-forecast-vs-budget.mjs",
+    "forecast:hierarchical": "node scripts/hierarchical_reconcile.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

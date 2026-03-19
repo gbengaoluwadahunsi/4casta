@@ -1,6 +1,6 @@
 # 2026 Orkin Canada Budget – File Structure & Categories
 
-Reference for the **2026 Orkin Canada Budget.xlsm** file used by `import-budget-2026.mjs`.
+Reference for the **2026 Orkin Canada Budget.xlsm** file used by `import-branch-file.mjs`.
 
 ## Complete Guide: Extracting Branch Data
 
@@ -83,4 +83,4 @@ The import script maps each **branch** sheet to a branch in the DB and upserts r
   The import sums every numeric cell across branch sheets (12 months × all categories). This gives a large total (on the order of billions) because it includes revenue and all expense categories (payroll, materials, rent, etc.).
 
 - **Company-quoted “total budget” (e.g. ~$253M)**  
-  The company may quote a single “total budget” figure (e.g. **$253,003,000**) that refers to **total revenue** or a summary from the **ORKIN CANADA** sheet, not the sum of every GL line. Run `node scripts/import-budget-2026.mjs --total-only` to see both the full sum and the revenue-only subtotal.
+  The company may quote a single “total budget” figure (e.g. **$253,003,000**) that refers to **total revenue** or a summary from the **ORKIN CANADA** sheet, not the sum of every GL line. Budget is imported per branch via `node scripts/import-branch-file.mjs`.
