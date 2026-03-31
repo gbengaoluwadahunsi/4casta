@@ -29,7 +29,17 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Pencil, Check, X, Loader2, Calendar, CalendarDays, TrendingUp, TrendingDown, BarChart3, Filter, ArrowDownAZ, ListOrdered } from "lucide-react"
-import { type ForecastResult, getShortMonthName, formatCurrency, formatPercent } from "@/lib/forecasting"
+import {
+  type ForecastResult,
+  getShortMonthName,
+  formatCurrency,
+  formatPercent,
+  isSubtotalDescription,
+  isLeafDescription,
+  normDesc,
+  isRevenueLine,
+  isExpenseLine
+} from "@/lib/forecasting"
 import { cn } from "@/lib/utils"
 
 const KPI_REVENUE = "TOTAL NET REVENUE"
@@ -216,23 +226,9 @@ const TEMPLATE_ORDER = [
   "NET PROFIT",
 ]
 
-function normDesc(s: string) {
-  return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim()
-}
-
 // Normalize for template matching (handles " - " vs ". " etc.)
 function normForMatch(s: string) {
   return normDesc(s).replace(/[\s\-\.]+/g, " ").replace(/\s+/g, " ").trim()
-}
-
-function isRevenueLine(description: string) {
-  const d = normDesc(description)
-  return d === KPI_REVENUE || d.includes("REVENUE")
-}
-
-function isExpenseLine(description: string) {
-  const d = normDesc(description)
-  return !d.includes("REVENUE")
 }
 
 function isKpiLine(description: string) {
@@ -255,11 +251,11 @@ type EditingCell = {
   currentValue: number
 } | null
 
-export function ForecastTable({ 
-  forecasts, 
-  currentMonth, 
+export function ForecastTable({
+  forecasts,
+  currentMonth,
   onUpdateForecast,
-  editable = true 
+  editable = true
 }: ForecastTableProps) {
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [editValue, setEditValue] = useState<string>("")
@@ -269,6 +265,11 @@ export function ForecastTable({
   const [viewMode, setViewMode] = useState<ViewMode>("both")
   const [hiddenRows, setHiddenRows] = useState<Set<string>>(new Set())
   const [sortByTemplate, setSortByTemplate] = useState(true)
+
+  // Metric toggles
+  const [showForecast, setShowForecast] = useState(true)
+  const [showBudget, setShowBudget] = useState(true)
+  const [showActual, setShowActual] = useState(false)
 
   // Filter forecasts by view mode
   const filteredForecasts = forecasts.filter((f) => {
@@ -281,21 +282,21 @@ export function ForecastTable({
   const uniqueDescriptions = [...new Set(filteredForecasts.map(f => f.description))]
   const allDescriptions = sortByTemplate
     ? [...uniqueDescriptions].sort((a, b) => {
-        const na = normForMatch(a)
-        const nb = normForMatch(b)
-        const ia = TEMPLATE_ORDER.findIndex((t) => {
-          const nt = normForMatch(t)
-          return na === nt || na.startsWith(nt + " ") || nt.startsWith(na + " ")
-        })
-        const ib = TEMPLATE_ORDER.findIndex((t) => {
-          const nt = normForMatch(t)
-          return nb === nt || nb.startsWith(nt + " ") || nt.startsWith(nb + " ")
-        })
-        if (ia >= 0 && ib >= 0) return ia - ib
-        if (ia >= 0) return -1
-        if (ib >= 0) return 1
-        return a.localeCompare(b)
+      const na = normForMatch(a)
+      const nb = normForMatch(b)
+      const ia = TEMPLATE_ORDER.findIndex((t) => {
+        const nt = normForMatch(t)
+        return na === nt || na.startsWith(nt + " ") || nt.startsWith(na + " ")
       })
+      const ib = TEMPLATE_ORDER.findIndex((t) => {
+        const nt = normForMatch(t)
+        return nb === nt || nb.startsWith(nt + " ") || nt.startsWith(nb + " ")
+      })
+      if (ia >= 0 && ib >= 0) return ia - ib
+      if (ia >= 0) return -1
+      if (ib >= 0) return 1
+      return a.localeCompare(b)
+    })
     : [...uniqueDescriptions].sort((a, b) => a.localeCompare(b))
   const descriptions = allDescriptions.filter((d) => !hiddenRows.has(d))
   const toggleRow = (desc: string) => {
@@ -306,7 +307,7 @@ export function ForecastTable({
       return next
     })
   }
-  
+
   // Get months to display: all 12 or only current month
   const months = showAllMonths
     ? Array.from({ length: 12 }, (_, i) => i + 1)
@@ -321,7 +322,7 @@ export function ForecastTable({
 
   const handleSave = async () => {
     if (!editingCell || !onUpdateForecast) return
-    
+
     const newValue = parseFloat(editValue)
     if (isNaN(newValue)) return
 
@@ -341,232 +342,234 @@ export function ForecastTable({
     setEditValue("")
   }
 
-  // Total row: sum only KPI lines (totals) to avoid double-counting individual entries
+  // Restrictive cap for display
+  const DISPLAY_CAP = 1000000000 // 1 Billion
+
+  // Total row: sum only leaf items to ensure real-time updates when children are edited
   const totalFilter = (f: ForecastResult) => {
     const d = normDesc(f.description)
-    if (viewMode === "revenue") return d === KPI_REVENUE
-    if (viewMode === "expenses") return KPI_EXPENSE_LINES.has(d)
-    return isKpiLine(f.description)
+    const isLeaf = isLeafDescription(d)
+    if (!isLeaf) return false
+
+    if (viewMode === "revenue") return isRevenueLine(d)
+    if (viewMode === "expenses") return isExpenseLine(d)
+    return true
   }
 
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Sorting and Rows */}
           <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground">Sort:</Label>
-            <div className="flex rounded-lg border border-input bg-muted/30 p-0.5">
-              <button
-                type="button"
-                onClick={() => setSortByTemplate(true)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  sortByTemplate ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
+            <Label className="text-sm text-muted-foreground">Rows:</Label>
+            <div className="flex items-center gap-1.5">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 h-8">
+                    <Filter className="h-3.5 w-3.5" />
+                    Filters
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 max-h-64 overflow-y-auto" align="start">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-medium mb-2">Primary Filter</p>
+                      <div className="flex rounded-md border p-0.5 bg-muted/30">
+                        <button onClick={() => setViewMode("both")} className={cn("px-2 py-1 text-xs rounded-sm flex-1", viewMode === "both" ? "bg-background shadow" : "")}>All</button>
+                        <button onClick={() => setViewMode("revenue")} className={cn("px-2 py-1 text-xs rounded-sm flex-1", viewMode === "revenue" ? "bg-background shadow" : "")}>Rev</button>
+                        <button onClick={() => setViewMode("expenses")} className={cn("px-2 py-1 text-xs rounded-sm flex-1", viewMode === "expenses" ? "bg-background shadow" : "")}>Exp</button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium mb-2">Show/Hide Items</p>
+                      {allDescriptions.map((desc) => (
+                        <label key={desc} className="flex items-center gap-2 cursor-pointer text-sm py-1">
+                          <Checkbox checked={!hiddenRows.has(desc)} onCheckedChange={() => toggleRow(desc)} />
+                          <span className="truncate">{desc}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => setSortByTemplate(!sortByTemplate)}
+                title={sortByTemplate ? "Sorting by Template order" : "Sorting Alphabetically"}
               >
-                <ListOrdered className="h-3.5 w-3.5" />
-                Template
-              </button>
-              <button
-                type="button"
-                onClick={() => setSortByTemplate(false)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  !sortByTemplate ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <ArrowDownAZ className="h-3.5 w-3.5" />
-                A–Z
-              </button>
+                {sortByTemplate ? <ListOrdered className="h-4 w-4" /> : <ArrowDownAZ className="h-4 w-4" />}
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground">Show:</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Filter className="h-3.5 w-3.5" />
-                  Rows {hiddenRows.size > 0 ? `(${allDescriptions.length - hiddenRows.size}/${allDescriptions.length})` : ""}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 max-h-64 overflow-y-auto" align="start">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Toggle rows to show/hide</p>
-                  {allDescriptions.map((desc) => (
-                    <label key={desc} className="flex items-center gap-2 cursor-pointer text-sm">
-                      <Checkbox
-                        checked={!hiddenRows.has(desc)}
-                        onCheckedChange={() => toggleRow(desc)}
-                      />
-                      <span className="truncate">{desc}</span>
-                    </label>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <div className="flex rounded-lg border border-input bg-muted/30 p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode("revenue")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  viewMode === "revenue" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                Revenue
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("expenses")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  viewMode === "expenses" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <TrendingDown className="h-3.5 w-3.5" />
-                Expenses
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("both")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  viewMode === "both" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <BarChart3 className="h-3.5 w-3.5" />
-                Both
-              </button>
+
+          {/* Metrics Toggles */}
+          <div className="flex items-center gap-2 border-l pl-4 border-border/50">
+            <Label className="text-sm text-muted-foreground mr-1">Metrics:</Label>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <Checkbox checked={showForecast} onCheckedChange={(v) => setShowForecast(!!v)} />
+                <span className="text-sm font-medium">Forecast</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <Checkbox checked={showBudget} onCheckedChange={(v) => setShowBudget(!!v)} />
+                <span className="text-sm text-muted-foreground">Budget</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <Checkbox checked={showActual} onCheckedChange={(v) => setShowActual(!!v)} />
+                <span className="text-sm font-bold text-primary">Actuals</span>
+              </label>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 border-l pl-4 border-border/50">
             <Switch
-            id="show-all-months"
-            checked={showAllMonths}
-            onCheckedChange={setShowAllMonths}
-          />
-          <Label htmlFor="show-all-months" className="text-sm font-normal cursor-pointer flex items-center gap-2">
-            {showAllMonths ? (
-              <>
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                All months
-              </>
-            ) : (
-              <>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                {getShortMonthName(currentMonth)} only
-              </>
-            )}
-          </Label>
+              id="show-all-months"
+              checked={showAllMonths}
+              onCheckedChange={setShowAllMonths}
+            />
+            <Label htmlFor="show-all-months" className="text-sm font-normal cursor-pointer flex items-center gap-2">
+              {showAllMonths ? "All months" : "Selected month"}
+            </Label>
           </div>
         </div>
       </div>
-      <div className="overflow-x-auto">
+
+      <div className="overflow-x-auto border rounded-lg">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead className="sticky left-0 bg-card z-10 min-w-[150px]">Description</TableHead>
+            <TableRow className="bg-muted/30">
+              <TableHead className="sticky left-0 bg-muted/80 backdrop-blur-sm z-10 min-w-[200px]">Description</TableHead>
               {months.map(month => (
-                <TableHead 
-                  key={month} 
+                <TableHead
+                  key={month}
                   className={cn(
-                    "text-center min-w-[100px]",
-                    month === currentMonth && "bg-primary/10"
+                    "text-center min-w-[120px] font-bold",
+                    month === currentMonth && "bg-primary/5"
                   )}
                 >
                   {getShortMonthName(month)}
                 </TableHead>
               ))}
-              <TableHead className="text-right min-w-[120px]">YTD Total</TableHead>
+              <TableHead className="text-right min-w-[120px] bg-muted/50 font-bold">Annual total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {allDescriptions.map(description => {
+            {descriptions.map(description => {
               const descForecasts = filteredForecasts.filter(f => f.description === description)
-              const ytdTotal = descForecasts.reduce((sum, f) => sum + f.forecastValue, 0)
-              const isHidden = hiddenRows.has(description)
-              if (isHidden) return null
-              
+              // Annual total based on current metrics
+              const ytdTotal = descForecasts.reduce((sum, f) => {
+                if (showActual && f.actualValue) return sum + f.actualValue
+                return sum + f.forecastValue
+              }, 0)
+
               return (
-                <TableRow key={description}>
-                  <TableCell className="sticky left-0 bg-card z-10 font-medium">
-                    {description}
+                <TableRow key={description} className="hover:bg-muted/20">
+                  <TableCell className="sticky left-0 bg-background/95 backdrop-blur-sm z-10 font-medium py-3 border-r">
+                    <span className={cn(isSubtotalDescription(description) && "font-bold text-foreground")}>
+                      {description}
+                    </span>
                   </TableCell>
                   {months.map(month => {
-                    const forecast = descForecasts.find(f => f.month === month)
-                    const isCurrentMonth = month === currentMonth
-                    const isPast = month < currentMonth
-                    const isEditing = editingCell?.description === description && editingCell?.month === month
-                    
+                    const f = descForecasts.find(m => m.month === month)
+                    const isCurrent = month === currentMonth
+                    const isClickable = editable && onUpdateForecast && f
+
                     return (
-                      <TableCell 
+                      <TableCell
                         key={month}
                         className={cn(
-                          "text-center relative group",
-                          isCurrentMonth && "bg-primary/10",
-                          isPast && "text-muted-foreground",
-                          editable && onUpdateForecast && "cursor-pointer hover:bg-muted/50 transition-colors"
+                          "text-center p-2 relative group",
+                          isCurrent && "bg-primary/5",
+                          isClickable && "cursor-pointer hover:bg-muted/40 transition-colors"
                         )}
-                        onClick={() => forecast && handleCellClick(description, month, forecast.forecastValue)}
+                        onClick={() => isClickable && handleCellClick(description, month, f.forecastValue)}
                       >
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center gap-1">
-                            <span className="font-medium">
-                              {forecast ? formatCurrency(forecast.forecastValue) : "-"}
-                            </span>
-                            {editable && onUpdateForecast && forecast && (
-                              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
-                            )}
-                          </div>
-                          {forecast && forecast.variancePercent !== 0 && (
-                            <Badge 
-                              variant={forecast.variancePercent >= 0 ? "default" : "destructive"}
-                              className="text-xs"
-                            >
-                              {formatPercent(forecast.variancePercent)}
-                            </Badge>
+                        <div className="flex flex-col gap-1 text-[11px]">
+                          {showActual && (
+                            <div className="flex flex-col">
+                              <span className="text-primary font-bold text-sm">
+                                {f?.actualValue ? formatCurrency(f.actualValue) : "$0"}
+                              </span>
+                              {f?.actualValue && f.forecastValue > 0 && (
+                                <span className={cn("text-[9px] font-medium", (f.actualValue - f.forecastValue) >= 0 ? "text-accent" : "text-destructive")}>
+                                  vs F: {formatPercent((f.actualValue - f.forecastValue) / f.forecastValue)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {showForecast && (
+                            <div className="flex flex-col border-t border-dotted border-border/50 pt-1 mt-1">
+                              <span className={cn("text-xs font-semibold", !showActual && "text-sm")}>
+                                {f ? formatCurrency(f.forecastValue) : "-"}
+                              </span>
+                              {showForecast && !showActual && f && f.variancePercent !== 0 && (
+                                <span className={cn("text-[9px]", f.variancePercent >= 0 ? "text-accent" : "text-destructive")}>
+                                  vs B: {formatPercent(f.variancePercent)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {showBudget && (
+                            <div className="text-[10px] text-muted-foreground italic">
+                              B: {f ? formatCurrency(f.budgetValue) : "-"}
+                            </div>
                           )}
                         </div>
+                        {isClickable && showForecast && (
+                          <Pencil className="h-2.5 w-2.5 absolute top-1 right-1 opacity-0 group-hover:opacity-30" />
+                        )}
                       </TableCell>
                     )
                   })}
-                  <TableCell className="text-right font-bold">
+                  <TableCell className="text-right font-bold bg-muted/10 border-l">
                     {formatCurrency(ytdTotal)}
                   </TableCell>
                 </TableRow>
               )
             })}
-            <TableRow className="bg-muted/50 font-bold">
-              <TableCell className="sticky left-0 bg-muted/50 z-10">
-                Total{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  ({viewMode === "revenue" ? "Revenue" : viewMode === "expenses" ? "Expenses" : "Revenue + Expenses"})
-                </span>
+
+            {/* Totals Row */}
+            <TableRow className="bg-muted/50 font-bold border-t-2">
+              <TableCell className="sticky left-0 bg-muted/80 backdrop-blur-sm z-10 border-r">
+                <div className="flex flex-col">
+                  <span>Grand Total</span>
+                  <span className="text-[10px] font-normal text-muted-foreground uppercase tracking-tight">
+                    {viewMode === "both" ? "Rev + Exp" : viewMode}
+                  </span>
+                </div>
               </TableCell>
               {months.map(month => {
-                const monthTotal = forecasts
+                const monthF = forecasts
                   .filter(f => f.month === month && totalFilter(f))
                   .reduce((sum, f) => sum + f.forecastValue, 0)
-                const isCurrentMonth = month === currentMonth
-                
+                const monthB = forecasts
+                  .filter(f => f.month === month && totalFilter(f))
+                  .reduce((sum, f) => sum + f.budgetValue, 0)
+                const monthA = forecasts
+                  .filter(f => f.month === month && totalFilter(f))
+                  .reduce((sum, f) => sum + (f.actualValue || 0), 0)
+
                 return (
-                  <TableCell 
-                    key={month}
-                    className={cn(
-                      "text-center",
-                      isCurrentMonth && "bg-primary/10"
-                    )}
-                  >
-                    {formatCurrency(monthTotal)}
+                  <TableCell key={month} className={cn("text-center p-2", month === currentMonth && "bg-primary/5")}>
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      {showActual && <span className="text-primary font-bold text-sm">{formatCurrency(monthA)}</span>}
+                      {showForecast && <span className={cn("text-xs", !showActual && "text-sm")}>{formatCurrency(monthF)}</span>}
+                      {showBudget && <span className="text-muted-foreground text-[10px]">{formatCurrency(monthB)}</span>}
+                    </div>
                   </TableCell>
                 )
               })}
-              <TableCell className="text-right">
+              <TableCell className="text-right bg-muted/20 border-l">
                 {formatCurrency(
                   forecasts
                     .filter(f => totalFilter(f))
-                    .reduce((sum, f) => sum + f.forecastValue, 0)
+                    .reduce((sum, f) => {
+                      if (showActual && f.actualValue) return sum + f.actualValue
+                      return sum + f.forecastValue
+                    }, 0)
                 )}
               </TableCell>
             </TableRow>

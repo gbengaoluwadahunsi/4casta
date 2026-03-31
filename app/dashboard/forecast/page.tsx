@@ -11,19 +11,26 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { LineChart, Download, TrendingUp, TrendingDown, Loader2, AlertCircle, Pencil, Search } from "lucide-react"
-import { 
-  formatCurrency, 
-  formatPercent, 
+import {
+  formatCurrency,
+  formatPercent,
   getShortMonthName,
-  type ForecastResult 
+  normDesc,
+  isRevenueLine,
+  isExpenseLine,
+  isSubtotalDescription,
+  isLeafDescription,
+  type ForecastResult
 } from "@/lib/forecasting"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import { ForecastChart, ForecastBarChart } from "@/components/dashboard/forecast-chart"
 import { ForecastTable } from "@/components/dashboard/forecast-table"
 
 type Branch = {
   id: string
   name: string
+  code: string
   region_id: string
   regions?: { name: string } | null
 }
@@ -39,10 +46,6 @@ const ALL_REGIONS_ID = "__all_regions__" // HQ view: all regions (HQ total); Sel
 
 const KPI_REVENUE = "TOTAL NET REVENUE"
 const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
-
-function normDesc(s: string) {
-  return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim()
-}
 
 export default function ForecastPage() {
   const searchParams = useSearchParams()
@@ -79,31 +82,49 @@ export default function ForecastPage() {
     return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [branches])
 
-  // Per-branch breakdown for region/HQ summary view (revenue + expenses for current month)
+  // Per-branch breakdown for region/HQ summary view (revenue + expenses + net profit for current month)
   const branchBreakdown = useMemo(() => {
     if (selectedBranch !== ALL_BRANCHES_ID || rawForecastRows.length === 0) return []
+
     const monthRows = rawForecastRows.filter((r) => r.month === currentMonth)
     const byBranch = new Map<
       string,
-      { revenueForecast: number; revenueBudget: number; expenseForecast: number; expenseBudget: number }
+      { revenueForecast: number; revenueBudget: number; expenseForecast: number; expenseBudget: number; netProfitForecast: number; netProfitBudget: number }
     >()
+
+    const DISPLAY_CAP = 1000000000 // 1 Billion
+
     monthRows.forEach((r) => {
-      const desc = String(r.description ?? "").toUpperCase().trim()
+      const d = normDesc(r.description)
+      const isLeaf = isLeafDescription(d)
+      if (!isLeaf) return
+
       const cur = byBranch.get(r.branch_id) || {
         revenueForecast: 0,
         revenueBudget: 0,
         expenseForecast: 0,
         expenseBudget: 0,
+        netProfitForecast: 0,
+        netProfitBudget: 0
       }
-      if (desc === KPI_REVENUE) {
-        cur.revenueForecast += Number(r.forecast_value ?? 0)
-        cur.revenueBudget += Number(r.budget_value ?? 0)
-      } else if (KPI_EXPENSE_LINES.has(desc)) {
-        cur.expenseForecast += Number(r.forecast_value ?? 0)
-        cur.expenseBudget += Number(r.budget_value ?? 0)
+
+      const val = Math.min(DISPLAY_CAP, Number(r.forecast_value ?? 0))
+      const bud = Number(r.budget_value ?? 0)
+
+      if (isRevenueLine(d)) {
+        cur.revenueForecast += val
+        cur.revenueBudget += bud
+      } else {
+        cur.expenseForecast += val
+        cur.expenseBudget += bud
       }
+
+      cur.netProfitForecast = cur.revenueForecast - cur.expenseForecast
+      cur.netProfitBudget = cur.revenueBudget - cur.expenseBudget
+
       byBranch.set(r.branch_id, cur)
     })
+
     return branches
       .filter((b) => byBranch.has(b.id))
       .map((b) => {
@@ -214,10 +235,10 @@ export default function ForecastPage() {
           setLoading(false)
           return
         }
-        const aggregate = (rows: any[]): ForecastResult[] => {
-          if (!rows.length) return []
-          const byKey = new Map<string, { forecast: number; budget: number; lastMonth: number; lastYear: number }>()
-          rows.forEach(f => {
+        const aggregate = (forecastRows: any[], actualRows: any[]): ForecastResult[] => {
+          const byKey = new Map<string, { forecast: number; budget: number; actual: number; lastMonth: number; lastYear: number }>()
+
+          forecastRows.forEach(f => {
             const key = `${f.description}\t${f.month}`
             const cur = byKey.get(key)
             const forecast = Number(f.forecast_value)
@@ -225,16 +246,29 @@ export default function ForecastPage() {
             const lastMonth = Number(f.last_month_value)
             const lastYear = Number(f.last_year_value)
             if (!cur) {
-              byKey.set(key, { forecast, budget, lastMonth, lastYear })
+              byKey.set(key, { forecast, budget, actual: 0, lastMonth, lastYear })
             } else {
               byKey.set(key, {
                 forecast: cur.forecast + forecast,
                 budget: cur.budget + budget,
+                actual: 0,
                 lastMonth: cur.lastMonth + lastMonth,
                 lastYear: cur.lastYear + lastYear,
               })
             }
           })
+
+          actualRows.forEach(a => {
+            const key = `${a.description}\t${a.month}`
+            const cur = byKey.get(key)
+            const val = Number(a.value)
+            if (cur) {
+              cur.actual += val
+            } else {
+              byKey.set(key, { forecast: 0, budget: 0, actual: val, lastMonth: 0, lastYear: 0 })
+            }
+          })
+
           const result: ForecastResult[] = Array.from(byKey.entries()).map(([key, v]) => {
             const [description, monthStr] = key.split("\t")
             const month = Number(monthStr)
@@ -245,6 +279,7 @@ export default function ForecastPage() {
               month,
               forecastValue: v.forecast,
               budgetValue: v.budget,
+              actualValue: v.actual,
               lastMonthValue: v.lastMonth,
               lastYearValue: v.lastYear,
               variance,
@@ -260,45 +295,54 @@ export default function ForecastPage() {
         for (let i = 0; i < branchIds.length; i += CHUNK) {
           chunks.push(branchIds.slice(i, i + CHUNK))
         }
-        const results = await Promise.all(
+        // Fetch forecasts and actuals in parallel chunks
+        const forecastChunks = await Promise.all(
           chunks.map((ids) =>
             fetchForecastRowsPaginated(() =>
-              supabase
-                .from("forecasts")
-                .select("*")
-                .in("branch_id", ids)
-                .eq("year", currentYear)
-                .order("branch_id")
-                .order("month")
-                .order("description")
+              supabase.from("forecasts").select("*").in("branch_id", ids).eq("year", currentYear)
             )
           )
         )
-        const allRows = results.flat()
-        if (allRows.length > 0) {
-          setForecasts(aggregate(allRows))
-          setRawForecastRows(allRows)
+        const actualChunks = await Promise.all(
+          chunks.map((ids) =>
+            supabase.from("actuals").select("*").in("branch_id", ids).eq("year", currentYear)
+          )
+        )
+
+        const allForecastRows = forecastChunks.flat()
+        const allActualRows = actualChunks.map(r => r.data || []).flat()
+
+        if (allForecastRows.length > 0 || allActualRows.length > 0) {
+          setForecasts(aggregate(allForecastRows, allActualRows))
+          setRawForecastRows(allForecastRows)
         } else {
           setForecasts([])
           setRawForecastRows([])
         }
       } else {
-        const existingForecasts = await fetchForecastRowsPaginated(() =>
-          supabase
-            .from("forecasts")
-            .select("*")
-            .eq("branch_id", selectedBranch)
-            .eq("year", currentYear)
-            .order("month")
-            .order("description")
-        )
+        // Single branch view
+        const [forecastRes, actualRes] = await Promise.all([
+          fetchForecastRowsPaginated(() =>
+            supabase.from("forecasts").select("*").eq("branch_id", selectedBranch).eq("year", currentYear)
+          ),
+          supabase.from("actuals").select("*").eq("branch_id", selectedBranch).eq("year", currentYear)
+        ])
 
-        if (existingForecasts && existingForecasts.length > 0) {
+        const existingForecasts = forecastRes ?? []
+        const existingActuals = actualRes.data ?? []
+
+        const actualMap = new Map<string, number>()
+        existingActuals.forEach(a => {
+          actualMap.set(`${a.description}\t${a.month}`, Number(a.value))
+        })
+
+        if (existingForecasts.length > 0 || existingActuals.length > 0) {
           const formattedForecasts: ForecastResult[] = existingForecasts.map(f => ({
             description: f.description,
             month: f.month,
             forecastValue: f.forecast_value,
             budgetValue: f.budget_value,
+            actualValue: actualMap.get(`${f.description}\t${f.month}`) || 0,
             lastMonthValue: f.last_month_value,
             lastYearValue: f.last_year_value,
             variance: f.forecast_value - f.budget_value,
@@ -308,7 +352,7 @@ export default function ForecastPage() {
         } else {
           setForecasts([])
         }
-        setRawForecastRows([])
+        setRawForecastRows(existingForecasts)
       }
     } catch (err) {
       console.error("Error loading forecasts:", err)
@@ -327,13 +371,93 @@ export default function ForecastPage() {
     loadForecasts()
   }, [selectedBranch, selectedRegionId, currentYear, branches.length, loadForecasts])
 
+  // ──────────────────────────────────────────────────────────────
+  // P&L recalculation constants
+  // Derived rows that are auto-computed from leaf items
+  // ──────────────────────────────────────────────────────────────
+  const DERIVED_ROW_CONTRIBUTION = "CONTRIBUTION B/4 OVERHEAD"
+  const DERIVED_ROW_OPERATING_PROFIT = "OPERATING PROFIT"
+  const DERIVED_ROW_BONUS_OPERATING_PROFIT = "BONUS OPERATING PROFIT"
+  const DERIVED_ROW_EXTERNAL_PROFIT = "EXTERNAL PROFIT"
+  const DERIVED_ROW_NET_PROFIT = "NET PROFIT"
+  const TOTAL_NET_REVENUE = "TOTAL NET REVENUE"
+  const TOTAL_EXPENSES = "TOTAL EXPENSES"
+  const TOTAL_OVERHEAD_ALLOCATIONS = "TOTAL OVERHEAD ALLOCATIONS"
+  const OVERHEAD_ALLOCATION_REVERSAL = "OVERHEAD ALLOCATION REVERSAL"
+  const HOME_OFFICE_OVERHEAD = "HOME OFFICE OVERHEAD"
+  const ACQUISITION_COST = "ACQUISITION COST"
+  const ULTIPRO_FEES = "ULTIPRO FEES"
+  const FOREIGN_EXCHANGE = "FOREIGN EXCHANGE GAIN/LOSS"
+  const ROYALTY_FEES = "ROYALTY FEES"
+  const INTEREST_EXPENSE = "INTEREST EXPENSE ORKIN"
+  const CANADIAN_TAXES = "CANADIAN TAXES"
+  const NON_OP_INT = "NON-OP INT EXP/(REV)"
+
+  /**
+   * Recalculate derived P&L subtotal rows for a given month.
+   * Returns a map of description → new forecast value for the derived rows.
+   */
+  function recalcDerivedRows(allForecasts: ForecastResult[], targetMonth: number): Map<string, number> {
+    // Recalculate basic totals from leaf items for this month
+    const leafRows = allForecasts.filter(f => f.month === targetMonth && isLeafDescription(f.description))
+
+    let totalRevenue = 0
+    let totalExpenses = 0
+    let totalOverhead = 0
+
+    leafRows.forEach(r => {
+      const d = normDesc(r.description)
+      if (isRevenueLine(d)) {
+        totalRevenue += r.forecastValue
+      } else if (d.includes("ALLOCATIONS")) {
+        totalOverhead += r.forecastValue
+      } else {
+        // Expense leaf (excluding overhead)
+        totalExpenses += r.forecastValue
+      }
+    })
+
+    const get = (desc: string) => {
+      const row = allForecasts.find(f => normDesc(f.description) === normDesc(desc) && f.month === targetMonth)
+      return row ? row.forecastValue : 0
+    }
+
+    const overheadReversal = get(OVERHEAD_ALLOCATION_REVERSAL)
+    const homeOffice = get(HOME_OFFICE_OVERHEAD)
+    const acquisitionCost = get(ACQUISITION_COST)
+    const ultiproFees = get(ULTIPRO_FEES)
+    const foreignExchange = get(FOREIGN_EXCHANGE)
+    const royaltyFees = get(ROYALTY_FEES)
+    const interestExpense = get(INTEREST_EXPENSE)
+    const canadianTaxes = get(CANADIAN_TAXES)
+    const nonOpInt = get(NON_OP_INT)
+
+    // Core P&L formulas
+    const contribution = totalRevenue - totalExpenses
+    const operatingProfit = contribution - totalOverhead
+    const bonusOperatingProfit = operatingProfit + overheadReversal
+    const externalProfit = bonusOperatingProfit - homeOffice - acquisitionCost - ultiproFees
+    const netProfit = externalProfit - foreignExchange - royaltyFees - interestExpense - canadianTaxes - nonOpInt
+
+    const derivedMap = new Map<string, number>()
+    derivedMap.set(normDesc(TOTAL_NET_REVENUE), Math.round(totalRevenue * 100) / 100)
+    derivedMap.set(normDesc(TOTAL_EXPENSES), Math.round(totalExpenses * 100) / 100)
+    derivedMap.set(normDesc(TOTAL_OVERHEAD_ALLOCATIONS), Math.round(totalOverhead * 100) / 100)
+    derivedMap.set(normDesc(DERIVED_ROW_CONTRIBUTION), Math.round(contribution * 100) / 100)
+    derivedMap.set(normDesc(DERIVED_ROW_OPERATING_PROFIT), Math.round(operatingProfit * 100) / 100)
+    derivedMap.set(normDesc(DERIVED_ROW_BONUS_OPERATING_PROFIT), Math.round(bonusOperatingProfit * 100) / 100)
+    derivedMap.set(normDesc(DERIVED_ROW_EXTERNAL_PROFIT), Math.round(externalProfit * 100) / 100)
+    derivedMap.set(normDesc(DERIVED_ROW_NET_PROFIT), Math.round(netProfit * 100) / 100)
+    return derivedMap
+  }
+
   const handleUpdateForecast = async (description: string, month: number, newValue: number) => {
     if (!selectedBranch || selectedBranch === ALL_BRANCHES_ID) return
 
-    // Update in database
+    // 1. Update the edited row in the database
     const { error: updateError } = await supabase
       .from("forecasts")
-      .update({ 
+      .update({
         forecast_value: newValue,
         updated_at: new Date().toISOString()
       })
@@ -348,22 +472,68 @@ export default function ForecastPage() {
       return
     }
 
-    // Update local state
-    setForecasts(prev => prev.map(f => {
+    // 2. Build a working copy with the new value applied
+    const updatedForecasts = forecasts.map(f => {
       if (f.description === description && f.month === month) {
-        const newVariance = newValue - f.budgetValue
-        const newVariancePercent = f.budgetValue !== 0 
-          ? ((newValue - f.budgetValue) / f.budgetValue) * 100 
-          : 0
-        return {
-          ...f,
-          forecastValue: newValue,
-          variance: newVariance,
-          variancePercent: newVariancePercent
-        }
+        return { ...f, forecastValue: newValue }
       }
       return f
-    }))
+    })
+
+    // 3. Recalculate derived P&L rows for the affected month
+    const derivedMap = recalcDerivedRows(updatedForecasts, month)
+
+    // 4. Apply derived values to local state + persist to database
+    const dbUpdates: { description: string; value: number }[] = []
+    const finalForecasts = updatedForecasts.map(f => {
+      if (f.month !== month) return f
+
+      // Was this the directly-edited row?
+      const isEditedRow = f.description === description
+
+      // Is this a derived subtotal row?
+      const nd = normDesc(f.description)
+      const derivedValue = derivedMap.get(nd)
+      const isDerived = derivedValue !== undefined
+
+      let newForecastValue = f.forecastValue
+      if (isEditedRow) {
+        newForecastValue = newValue
+      } else if (isDerived) {
+        newForecastValue = derivedValue
+        dbUpdates.push({ description: f.description, value: derivedValue })
+      }
+
+      const newVariance = newForecastValue - f.budgetValue
+      const newVariancePercent = f.budgetValue !== 0
+        ? ((newForecastValue - f.budgetValue) / f.budgetValue) * 100
+        : 0
+
+      return {
+        ...f,
+        forecastValue: newForecastValue,
+        variance: newVariance,
+        variancePercent: newVariancePercent
+      }
+    })
+
+    setForecasts(finalForecasts)
+
+    // 5. Persist derived row updates to database (fire-and-forget)
+    if (dbUpdates.length > 0) {
+      const now = new Date().toISOString()
+      Promise.all(
+        dbUpdates.map(u =>
+          supabase
+            .from("forecasts")
+            .update({ forecast_value: u.value, updated_at: now })
+            .eq("branch_id", selectedBranch)
+            .eq("description", u.description)
+            .eq("year", currentYear)
+            .eq("month", month)
+        )
+      ).catch(err => console.error("Error saving derived rows:", err))
+    }
   }
 
   const descriptions = [...new Set(forecasts.map(f => f.description))]
@@ -376,32 +546,42 @@ export default function ForecastPage() {
     searchLower === ""
       ? filteredByCategory
       : filteredByCategory.filter((f) =>
-          f.description.toLowerCase().includes(searchLower)
-        )
+        f.description.toLowerCase().includes(searchLower)
+      )
 
   // Chart: when "All Categories" show KPI-only totals (same as summary cards); otherwise show selected category
   const chartForecasts =
     selectedDescription === "all"
       ? forecasts.filter((f) => {
-          const d = normDesc(f.description)
-          return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
-        })
+        const d = normDesc(f.description)
+        return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
+      })
       : filteredForecasts
 
-  // Summary stats: use KPIs only (revenue + expenses), not sum of all lines (which inflates to 193M+)
-  const monthRows = filteredForecasts.filter(f => f.month === currentMonth)
+  // Summary stats: use LEAF items only to ensure real-time updates when children are edited
+  const monthRows = forecasts.filter(f => f.month === currentMonth)
   let revenueForecast = 0
   let revenueBudget = 0
   let expenseForecast = 0
   let expenseBudget = 0
+
+  // Use a restrictive cap for display
+  const DISPLAY_CAP = 1000000000 // 1 Billion
+
   monthRows.forEach(f => {
     const d = normDesc(f.description)
-    if (d === KPI_REVENUE) {
-      revenueForecast += f.forecastValue
-      revenueBudget += f.budgetValue
-    } else if (KPI_EXPENSE_LINES.has(d)) {
-      expenseForecast += f.forecastValue
-      expenseBudget += f.budgetValue
+    const isLeaf = isLeafDescription(d)
+    const val = Math.min(DISPLAY_CAP, f.forecastValue)
+
+    if (isLeaf) {
+      if (isRevenueLine(d)) {
+        revenueForecast += val
+        revenueBudget += f.budgetValue
+      } else {
+        // Everything else that is a leaf is an expense (payroll, supplies, allocations, etc.)
+        expenseForecast += val
+        expenseBudget += f.budgetValue
+      }
     }
   })
   const revenueVariance = revenueForecast - revenueBudget
@@ -409,27 +589,40 @@ export default function ForecastPage() {
   const expenseVariance = expenseForecast - expenseBudget
   const expenseVariancePct = expenseBudget !== 0 ? (expenseVariance / expenseBudget) * 100 : 0
 
-  // Full-year totals (all 12 months) — only valid when we have data for every month
+  // Derived Net Profit for summary cards
+  const netProfitForecast = revenueForecast - expenseForecast
+  const netProfitBudget = revenueBudget - expenseBudget
+  const netProfitVariance = netProfitForecast - netProfitBudget
+  const netProfitPct = netProfitBudget !== 0 ? (netProfitVariance / Math.abs(netProfitBudget)) * 100 : 0
+
+  // Full-year totals (all 12 months)
   const monthsPresent = new Set(forecasts.map((f) => f.month))
   const hasFullYearData = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) => monthsPresent.has(m))
-  const allMonthRows = forecasts.filter((f) => {
-    const d = normDesc(f.description)
-    return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
-  })
+
   let annualRevenueForecast = 0
   let annualRevenueBudget = 0
   let annualExpenseForecast = 0
   let annualExpenseBudget = 0
-  allMonthRows.forEach((f) => {
+
+  forecasts.forEach((f) => {
     const d = normDesc(f.description)
-    if (d === KPI_REVENUE) {
-      annualRevenueForecast += f.forecastValue
-      annualRevenueBudget += f.budgetValue
-    } else if (KPI_EXPENSE_LINES.has(d)) {
-      annualExpenseForecast += f.forecastValue
-      annualExpenseBudget += f.budgetValue
+    const isLeaf = isLeafDescription(d)
+    const val = Math.min(DISPLAY_CAP, f.forecastValue)
+    if (isLeaf) {
+      if (isRevenueLine(d)) {
+        annualRevenueForecast += val
+        annualRevenueBudget += f.budgetValue
+      } else {
+        annualExpenseForecast += val
+        annualExpenseBudget += f.budgetValue
+      }
     }
   })
+
+  // Full-year variables
+  const annualNetProfitForecast = annualRevenueForecast - annualExpenseForecast
+  const annualNetProfitBudget = annualRevenueBudget - annualExpenseBudget
+  const annualNetProfitVariance = annualNetProfitForecast - annualNetProfitBudget
 
   const exportToCSV = () => {
     const headers = ["Description", "Month", "Forecast", "Budget", "Variance", "Variance %"]
@@ -465,9 +658,9 @@ export default function ForecastPage() {
           ? "Region: " + (regionsList.find((r) => r.id === selectedRegionId)?.name ?? "Region")
           : "HQ level"
       : (() => {
-          const b = branches.find((x: Branch) => x.id === selectedBranch)
-          return b ? `Branch: ${b.name}` : "Branch level"
-        })()
+        const b = branches.find((x: Branch) => x.id === selectedBranch)
+        return b ? `Branch: ${b.name}` : "Branch level"
+      })()
 
   if (loading && !profile) {
     return (
@@ -690,7 +883,7 @@ export default function ForecastPage() {
             </span>
           </div>
           {!loading && forecasts.length > 0 && hasFullYearData && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -700,6 +893,9 @@ export default function ForecastPage() {
                 <CardContent>
                   <div className="text-xl font-bold">Forecast {formatCurrency(annualRevenueForecast)}</div>
                   <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualRevenueBudget)}</p>
+                  <p className={cn("text-xs mt-1 font-medium", annualRevenueForecast >= annualRevenueBudget ? "text-accent" : "text-destructive")}>
+                    Variance {annualRevenueForecast >= annualRevenueBudget ? "+" : ""}{formatCurrency(annualRevenueForecast - annualRevenueBudget)}
+                  </p>
                 </CardContent>
               </Card>
               <Card className="border-primary/20 bg-primary/5">
@@ -711,14 +907,31 @@ export default function ForecastPage() {
                 <CardContent>
                   <div className="text-xl font-bold">Forecast {formatCurrency(annualExpenseForecast)}</div>
                   <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualExpenseBudget)}</p>
+                  <p className={cn("text-xs mt-1 font-medium", annualExpenseForecast <= annualExpenseBudget ? "text-accent" : "text-destructive")}>
+                    Variance {annualExpenseForecast <= annualExpenseBudget ? "" : "+"}{formatCurrency(annualExpenseForecast - annualExpenseBudget)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-accent/20 bg-accent/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {currentYear} full year · Net Profit
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-bold">Forecast {formatCurrency(annualNetProfitForecast)}</div>
+                  <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualNetProfitBudget)}</p>
+                  <p className={cn("text-xs mt-1 font-medium", annualNetProfitForecast >= annualNetProfitBudget ? "text-accent" : "text-destructive")}>
+                    Variance {annualNetProfitForecast >= annualNetProfitBudget ? "+" : ""}{formatCurrency(annualNetProfitVariance)}
+                  </p>
                 </CardContent>
               </Card>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {loading ? (
               <>
-                {[1, 2, 3, 4].map((i) => (
+                {[1, 2, 3].map((i) => (
                   <Card key={i}>
                     <CardHeader className="pb-2">
                       <Skeleton className="h-4 w-24" />
@@ -735,53 +948,51 @@ export default function ForecastPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total revenue · Forecast
+                      Monthly Revenue · {getShortMonthName(currentMonth)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{formatCurrency(revenueForecast)}</div>
-                    <p className="text-xs text-muted-foreground">
-                      {getShortMonthName(currentMonth)} {currentYear}
-                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-muted-foreground">Budget: {formatCurrency(revenueBudget)}</p>
+                      <p className={cn("text-xs font-medium", revenueVariance >= 0 ? "text-accent" : "text-destructive")}>
+                        {formatPercent(revenueVariancePct)}
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
+
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total revenue · Budget
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(revenueBudget)}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Variance {revenueVariance >= 0 ? "+" : ""}{formatCurrency(revenueVariance)} ({formatPercent(revenueVariancePct)})
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total expenses · Forecast
+                      Monthly Expenses · {getShortMonthName(currentMonth)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{formatCurrency(expenseForecast)}</div>
-                    <p className="text-xs text-muted-foreground">
-                      {getShortMonthName(currentMonth)} {currentYear}
-                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-muted-foreground">Budget: {formatCurrency(expenseBudget)}</p>
+                      <p className={cn("text-xs font-medium", expenseVariance <= 0 ? "text-accent" : "text-destructive")}>
+                        {formatPercent(expenseVariancePct)}
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
-                <Card>
+
+                <Card className="border-accent/20">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total expenses · Budget
+                      Monthly Net Profit · {getShortMonthName(currentMonth)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(expenseBudget)}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Variance {expenseVariance >= 0 ? "+" : ""}{formatCurrency(expenseVariance)} ({formatPercent(expenseVariancePct)})
-                    </p>
+                    <div className="text-2xl font-bold">{formatCurrency(netProfitForecast)}</div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-muted-foreground">Budget: {formatCurrency(netProfitBudget)}</p>
+                      <p className={cn("text-xs font-medium", netProfitVariance >= 0 ? "text-accent" : "text-destructive")}>
+                        {formatPercent(netProfitPct)}
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               </>
@@ -802,10 +1013,12 @@ export default function ForecastPage() {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-2 font-medium">Branch</th>
-                        <th className="text-right py-3 px-2 font-medium">Revenue Forecast</th>
-                        <th className="text-right py-3 px-2 font-medium">Revenue Budget</th>
-                        <th className="text-right py-3 px-2 font-medium">Expense Forecast</th>
-                        <th className="text-right py-3 px-2 font-medium">Expense Budget</th>
+                        <th className="text-right py-3 px-2 font-medium">Revenue (F)</th>
+                        <th className="text-right py-3 px-2 font-medium">Revenue (B)</th>
+                        <th className="text-right py-3 px-2 font-medium">Expense (F)</th>
+                        <th className="text-right py-3 px-2 font-medium">Expense (B)</th>
+                        <th className="text-right py-3 px-2 font-medium">Net Profit (F)</th>
+                        <th className="text-right py-3 px-2 font-medium">Net Profit (B)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -815,18 +1028,48 @@ export default function ForecastPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedBranch(row.branch.id)}
-                              className="text-primary hover:underline text-left inline-flex items-center gap-1.5"
+                              className="text-primary hover:underline text-left inline-flex flex-col items-start gap-0.5"
                             >
-                              {row.branch.name}
-                              <span className="text-xs text-muted-foreground font-normal">(edit)</span>
+                              <span>{row.branch.name}</span>
+                              <span className="text-[10px] text-muted-foreground font-normal uppercase">{row.branch.code}</span>
                             </button>
                           </td>
                           <td className="text-right py-2 px-2">{formatCurrency(row.revenueForecast)}</td>
                           <td className="text-right py-2 px-2 text-muted-foreground">{formatCurrency(row.revenueBudget)}</td>
                           <td className="text-right py-2 px-2">{formatCurrency(row.expenseForecast)}</td>
                           <td className="text-right py-2 px-2 text-muted-foreground">{formatCurrency(row.expenseBudget)}</td>
+                          <td className="text-right py-2 px-2 font-bold">{formatCurrency(row.netProfitForecast)}</td>
+                          <td className="text-right py-2 px-2">
+                            <div className="flex flex-col items-end">
+                              <span className="text-muted-foreground">{formatCurrency(row.netProfitBudget)}</span>
+                              <span className={cn("text-[10px] font-medium", (row.netProfitForecast - row.netProfitBudget) >= 0 ? "text-accent" : "text-destructive")}>
+                                {(row.netProfitForecast - row.netProfitBudget) >= 0 ? "+" : ""}{formatCurrency(row.netProfitForecast - row.netProfitBudget)}
+                              </span>
+                            </div>
+                          </td>
                         </tr>
                       ))}
+                      <tr className="bg-muted/30 font-bold">
+                        <td className="py-3 px-2">HQ Total ({branchBreakdown.length} branches)</td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.revenueForecast, 0))}
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.revenueBudget, 0))}
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.expenseForecast, 0))}
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.expenseBudget, 0))}
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.netProfitForecast, 0))}
+                        </td>
+                        <td className="text-right py-3 px-2">
+                          {formatCurrency(branchBreakdown.reduce((sum, b) => sum + b.netProfitBudget, 0))}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -899,19 +1142,19 @@ export default function ForecastPage() {
                   <TabsTrigger value="table">Table</TabsTrigger>
                 </TabsList>
                 <TabsContent value="chart" className="mt-4">
-                  <ForecastBarChart 
-                    forecasts={chartForecasts} 
+                  <ForecastBarChart
+                    forecasts={chartForecasts}
                     currentMonth={currentMonth}
                   />
                 </TabsContent>
                 <TabsContent value="line" className="mt-4">
-                  <ForecastChart 
-                    forecasts={chartForecasts} 
+                  <ForecastChart
+                    forecasts={chartForecasts}
                     currentMonth={currentMonth}
                   />
                 </TabsContent>
                 <TabsContent value="table" className="mt-4">
-                  <ForecastTable 
+                  <ForecastTable
                     forecasts={filteredForecasts}
                     currentMonth={currentMonth}
                     onUpdateForecast={handleUpdateForecast}

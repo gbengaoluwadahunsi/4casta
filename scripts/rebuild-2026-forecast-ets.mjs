@@ -24,7 +24,7 @@ if (useWorkingDays) {
     if (fs.existsSync(wdPath)) {
       WORKING_DAYS = JSON.parse(fs.readFileSync(wdPath, "utf8"))
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 const envPath = path.join(rootDir, ".env")
 
@@ -56,7 +56,7 @@ const HIST_YEARS = [2023, 2024, 2025]
 const TARGET_YEAR = 2026
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
-const MAX_DECIMAL = 9999999999999.99
+const MAX_DECIMAL = 1000000000 // Cap at 1 Billion to avoid explosions
 const n = (v) => Number(v || 0)
 const r2 = (v) => {
   const x = Math.round((Number(v) || 0) * 100) / 100

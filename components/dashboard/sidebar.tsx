@@ -13,6 +13,7 @@ import {
   Settings,
   Home,
   History,
+  ClipboardList,
 } from "lucide-react"
 
 type Profile = {
@@ -30,11 +31,13 @@ const navItems = {
   branch_user: [
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/dashboard/forecast", label: "Forecasts", icon: LineChart },
+    { href: "/dashboard/actuals", label: "Monthly Actuals", icon: ClipboardList },
     { href: "/dashboard/activity", label: "Activity", icon: History },
   ],
   region_admin: [
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/dashboard/forecast", label: "Forecasts", icon: LineChart },
+    { href: "/dashboard/actuals", label: "Monthly Actuals", icon: ClipboardList },
     { href: "/dashboard/branches", label: "Branches", icon: Building2 },
     { href: "/dashboard/activity", label: "Activity", icon: History },
   ],
@@ -42,6 +45,7 @@ const navItems = {
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/dashboard/create-account", label: "Create account", icon: UserPlus },
     { href: "/dashboard/forecast", label: "Forecasts", icon: LineChart },
+    { href: "/dashboard/actuals", label: "Monthly Actuals", icon: ClipboardList },
     { href: "/dashboard/branches", label: "Branches", icon: Building2 },
     { href: "/dashboard/regions", label: "Regions", icon: MapPin },
     { href: "/dashboard/activity", label: "Activity", icon: History },

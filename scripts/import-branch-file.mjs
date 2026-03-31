@@ -144,6 +144,7 @@ function rowsToForecasts(rows, year, header) {
     const monthVals = monthCols.map((c) => toNum(row[c]))
     const hasAnyMonth = monthVals.some((v) => v !== null)
     const totalVal = totalColIndex != null ? toNum(row[totalColIndex]) : null
+
     if (!hasAnyMonth && totalVal !== null) {
       const perMonth = totalVal / 12
       for (let m = 0; m < 12; m++) {

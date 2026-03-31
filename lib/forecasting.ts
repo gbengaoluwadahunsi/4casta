@@ -14,6 +14,7 @@ export type ForecastResult = {
   month: number
   forecastValue: number
   budgetValue: number
+  actualValue?: number
   lastMonthValue: number
   lastYearValue: number
   variance: number
@@ -185,6 +186,31 @@ export function formatPercent(value: number): string {
   return `${sign}${value.toFixed(1)}%`
 }
 
+/**
+ * Returns true if the description looks like a subtotal/total line
+ */
+export function isSubtotalDescription(desc: string | null | undefined): boolean {
+  if (!desc) return false
+  const d = desc.toUpperCase()
+  return (
+    d.includes("TOTAL") ||
+    d.includes("SUBTOTAL") ||
+    d.includes("SUB TOTAL") ||
+    d.includes("PROFIT") ||
+    d.includes("CONTRIBUTION") ||
+    d.includes("B/4 OVERHEAD") ||
+    d.includes("NET CONTRACT")
+  )
+}
+
+/**
+ * Returns true if the description is a leaf node (not a subtotal)
+ */
+export function isLeafDescription(desc: string | null | undefined): boolean {
+  if (!desc) return false
+  return !isSubtotalDescription(desc)
+}
+
 // Get month name
 export function getMonthName(month: number): string {
   const months = [
@@ -195,6 +221,21 @@ export function getMonthName(month: number): string {
 }
 
 // Get short month name
+// Normalize description for comparison
+export function normDesc(s: string): string {
+  return String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim()
+}
+
+export function isRevenueLine(description: string): boolean {
+  const d = normDesc(description)
+  return d === "TOTAL NET REVENUE" || d.includes("REVENUE")
+}
+
+export function isExpenseLine(description: string): boolean {
+  const d = normDesc(description)
+  return !d.includes("REVENUE")
+}
+
 export function getShortMonthName(month: number): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   return months[month - 1] || ""
