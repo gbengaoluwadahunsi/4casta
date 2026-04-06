@@ -323,7 +323,7 @@ export function ActualsReportForm({ branchId, year }: { branchId: string, year: 
         const canadianTaxes = updated["CANADIAN TAXES"] || 0
         const nonOpInt = updated["NON-OP INT EXP/(REV)"] || 0
 
-        const bonusOperatingProfit = operatingProfit + overheadReversal
+        const bonusOperatingProfit = operatingProfit - overheadReversal
         const externalProfit = bonusOperatingProfit - homeOffice - acquisitionCost - ultiproFees
         const netProfit = externalProfit - foreignExchange - royaltyFees - interestExpense - canadianTaxes - nonOpInt
 

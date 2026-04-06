@@ -47,6 +47,144 @@ const ALL_REGIONS_ID = "__all_regions__" // HQ view: all regions (HQ total); Sel
 const KPI_REVENUE = "TOTAL NET REVENUE"
 const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
 
+// ────────────────────────────────────────────────────────────────
+// Overhead allocation lines — statutory/fixed, use budget figures
+// ────────────────────────────────────────────────────────────────
+const BUDGET_ONLY_LINES = new Set([
+  // Overhead allocations (statutory/fixed)
+  "SALES ALLOCATIONS", "QA ALLOCATIONS", "AR ALLOCATIONS",
+  "DATA PROCESSING ALLOCATIONS", "ACCOUNTING ALLOCATIONS",
+  "ADVERTISING & MKTG - ALLOCATION", "REGION SUPPORT SERVICES",
+  "CANADA OVERHEAD ALLOCATIONS", "BMT ALLOCATIONS",
+  "FLEET ALLOCATIONS", "CORPORATE ADMIN ALLOCATIONS",
+  "HO ADMIN ALLOCATIONS", "HUMAN RESOURCES ALLOCATIONS",
+  "INFORMATION TECH. ALLOCATIONS",
+  // Below-the-line statutory items
+  "OVERHEAD ALLOCATION REVERSAL",
+  "HOME OFFICE OVERHEAD",
+  "ACQUISITION COST",
+  "ULTIPRO FEES",
+].map(normDesc))
+
+// Below-the-line descriptions that should NOT count as "Total Expenses" for Contribution B/4 Overhead
+const BELOW_THE_LINE = new Set([
+  ...BUDGET_ONLY_LINES,
+  ..."OVERHEAD ALLOCATIONS,TOTAL OVERHEAD ALLOCATIONS,OPERATING PROFIT,OVERHEAD ALLOCATION REVERSAL,BONUS OPERATING PROFIT,HOME OFFICE OVERHEAD,ACQUISITION COST,ULTIPRO FEES,EXTERNAL PROFIT,FOREIGN EXCHANGE GAIN/LOSS,ROYALTY FEES,INTEREST EXPENSE ORKIN,CANADIAN TAXES,NON-OP INT EXP/(REV),NET PROFIT,CONTRIBUTION B/4 OVERHEAD".split(",").map(s => normDesc(s)),
+])
+
+// ────────────────────────────────────────────────────────────────
+// Hierarchical P&L subtotal rules — order matters (children first)
+// ────────────────────────────────────────────────────────────────
+type SubtotalRule = { desc: string; add: string[]; sub?: string[] }
+
+const SUBTOTAL_RULES: SubtotalRule[] = [
+  // Revenue
+  { desc: "SUBTOTAL MONTHLY", add: ["PEST CONTROL REVENUE", "COMMERCIAL REVENUE", "COMMERCIAL BED BUG REVENUE", "FLY CONTROL", "ORKIN/AIRE", "FEMININE HYGIENE", "DRAIN MAINTENANCE", "SOAK TANK"] },
+  { desc: "SUBTOTAL/ALTERNATE/SEASONAL", add: ["RESIDENTIAL CONTRACT", "VALU PLUS COMM REVENUE", "SEASONAL REV  & OTHER"] },
+  { desc: "GROSS CONTRACT REVENUE", add: ["SUBTOTAL MONTHLY", "SUBTOTAL/ALTERNATE/SEASONAL"] },
+  { desc: "TOTAL ALLOWANCES", add: ["ALLOWANCES", "PC MGMT FAILURE", "YEAR IN ADVANCE", "PC SALES DISC"] },
+  { desc: "NET CONTRACT REVENUE", add: ["GROSS CONTRACT REVENUE"], sub: ["TOTAL ALLOWANCES"] },
+  { desc: "TOTAL MISC REVENUE", add: ["MISCELLANEOUS REVENUE", "RESIDENTIAL BED BUG REVENUE", "RESIDENTIAL SPECIAL SERVICES", "COMMERCIAL SPECIAL SERVICES", "PRODUCT SALES", "FUMIGATION PC"] },
+  { desc: "TOTAL NET PC REVENUE", add: ["NET CONTRACT REVENUE", "TOTAL MISC REVENUE"] },
+  { desc: "TOTAL NET TC REVENUE", add: ["TERMITE (TC) REVENUE", "TERMITE TREATING", "PRETREAT", "INSPECTION FEES"] },
+  { desc: "TOTAL NET REVENUE", add: ["TOTAL NET PC REVENUE", "TOTAL NET TC REVENUE"] },
+  // Payroll
+  { desc: "SUBTOTALS MANAGERS", add: ["DIVISION MANAGER", "REGION MANAGER SALARY", "BRANCH MANAGER SALARY", "QUALITY ASSURANCE", "MANAGER TRAINEE"] },
+  { desc: "SUBTOTAL MGR INCENTIVES", add: ["MANAGERS INCENTIVES PAID", "MGR INCENTIVE ACCRUED"] },
+  { desc: "SUBTOTAL OFFICE", add: ["OFFICE SALARIES", "VAC / HOLIDAY / SICK", "OFFICE SAL FLD OT", "TEMP OFFICE PERS"] },
+  { desc: "SUBTOTAL ADMIN PAYROLL", add: ["SUBTOTALS MANAGERS", "SUBTOTAL MGR INCENTIVES", "SUBTOTAL OFFICE"] },
+  { desc: "SUBTOTAL SALES PAYROLL", add: ["SALESPERSON SALARIES", "ASM & NATIONAL SALES SALARIES", "SALES COMMISSIONS / BONUS", "SALES VAC / HOL / SICK", "TECHNICIAN SALES COMMISSION"] },
+  { desc: "SUBTOTAL SERV PAYROLL", add: ["TECHNICIAN SERVICE SALARIES", "TECHNICIAN SERV PRODUCTION", "PC VAC / HOL / SICK", "PC SERV WAGES - OT"] },
+  { desc: "TOTAL SERVICE WAGES", add: ["SUBTOTAL SERV PAYROLL", "SERV MGR SALARY", "SERV MGR BONUS"] },
+  { desc: "TOTAL PAYROLL", add: ["SUBTOTAL ADMIN PAYROLL", "SUBTOTAL SALES PAYROLL", "TOTAL SERVICE WAGES"] },
+  // Personnel related
+  { desc: "TOTAL PERSONNEL EXPENSES", add: ["PAYROLL TAXES", "INS-GROUP BENEFITS", "INS-GROUP DEDUCTIONS", "UNIFORMS", "MOVING", "TRAINING", "PROF RECRUITING", "MEDICAL", "OTHER PERSONNEL RELATED"] },
+  { desc: "TOTAL EMPL COST", add: ["TOTAL PAYROLL", "TOTAL PERSONNEL EXPENSES"] },
+  // Materials
+  { desc: "SUB TOTAL M&S", add: ["PC CHEMICALS", "FREIGHT IN", "PC TOOLS & EQUIPMENT", "M&S FLY LIGHTS"] },
+  { desc: "TOTAL MATERIAL & SUPPLIES", add: ["SUB TOTAL M&S", "COGS PRODUCTS & EQUIPMENT"] },
+  // Vehicle
+  { desc: "TOTAL VEHICLE OPERATING", add: ["GASOLINE", "TIRES", "OIL CHANGE", "OTHER OPERATING EXPENSES"] },
+  { desc: "TOTAL STAND EXPENSES", add: ["LEASE", "DEPRECIATION", "VEH GAIN / LOSS", "LICENSES / TAXES"] },
+  { desc: "TOTAL VEHICLE EXPENSE", add: ["TOTAL VEHICLE OPERATING", "TOTAL STAND EXPENSES"] },
+  { desc: "TOTAL FLEET", add: ["TOTAL VEHICLE EXPENSE", "AUTO ALLOWANCE", "PER USE DEDUCTIONS"] },
+  // Insurance
+  { desc: "SUBTOTAL INSURANCE & CLAIMS", add: ["VEHICLE ACCIDENT", "CLAIMS - GENERAL  LIABILITY", "INS - GENERAL LIABILITY", "INS - AUTO LIABILITY", "INS - WORKERS COMPENSATION"] },
+  { desc: "TOTAL INSURANCE & CLAIMS", add: ["SUBTOTAL INSURANCE & CLAIMS", "CATASTROPHIC ACCRUAL"] },
+  // Bad debts
+  { desc: "SUBTOTAL BAD DEBTS", add: ["BAD DEBT EXPENSE", "RECOVERIES"] },
+  { desc: "TOTAL BAD DEBTS", add: ["SUBTOTAL BAD DEBTS", "BAD DEBT ACCRUAL", "OUT OF POLICY"] },
+  // Other expenses
+  { desc: "TOTAL FIXED EXPENSE", add: ["ADVERTISING DIRECT", "RENT - BRANCH", "TAXES PROP/OTHER"] },
+  { desc: "SUBTOTAL TELEPHONE", add: ["LOCAL CENTRALIZED", "LONG DISTANCE CENTRALIZED", "CELLULAR TELEPHONE", "OTHER COMMUNICATION"] },
+  { desc: "SUBTOTAL TELE. & UTILITIES", add: ["SUBTOTAL TELEPHONE", "UTILITIES"] },
+  { desc: "TOTAL CONTROLLABLE", add: ["OFFICE SUPPLIES", "PRINTING & FORMS", "COMPUTER SUPPLIES", "TRAVEL", "CONFERENCE", "SUBTOTAL TELE. & UTILITIES", "PROFESSIONAL SERVICES", "MAINTENANCE & REPAIRS", "EQUIPMENT RENTAL", "POSTAGE", "BANK SERVICE CHARGES", "CREDIT CARD SERVICE FEE", "MISCELLANEOUS"] },
+  { desc: "TOTAL OTHER EXPENSE", add: ["TOTAL FIXED EXPENSE", "TOTAL CONTROLLABLE"] },
+  // Total expenses
+  { desc: "TOTAL EXPENSES", add: ["TOTAL EMPL COST", "TOTAL MATERIAL & SUPPLIES", "TOTAL FLEET", "TOTAL INSURANCE & CLAIMS", "TOTAL BAD DEBTS", "TOTAL OTHER EXPENSE"] },
+  // Contribution
+  { desc: "CONTRIBUTION B/4 OVERHEAD", add: ["TOTAL NET REVENUE"], sub: ["TOTAL EXPENSES"] },
+  // Overhead
+  { desc: "TOTAL OVERHEAD ALLOCATIONS", add: ["SALES ALLOCATIONS", "QA ALLOCATIONS", "AR ALLOCATIONS", "DATA PROCESSING ALLOCATIONS", "ACCOUNTING ALLOCATIONS", "ADVERTISING & MKTG - ALLOCATION", "REGION SUPPORT SERVICES", "CANADA OVERHEAD ALLOCATIONS", "BMT ALLOCATIONS", "FLEET ALLOCATIONS", "CORPORATE ADMIN ALLOCATIONS", "HO ADMIN ALLOCATIONS", "HUMAN RESOURCES ALLOCATIONS", "INFORMATION TECH. ALLOCATIONS"] },
+  // Bottom line
+  { desc: "OPERATING PROFIT", add: ["CONTRIBUTION B/4 OVERHEAD"], sub: ["TOTAL OVERHEAD ALLOCATIONS"] },
+  { desc: "BONUS OPERATING PROFIT", add: ["OPERATING PROFIT"], sub: ["OVERHEAD ALLOCATION REVERSAL"] },
+  { desc: "EXTERNAL PROFIT", add: ["BONUS OPERATING PROFIT"], sub: ["HOME OFFICE OVERHEAD", "ACQUISITION COST", "ULTIPRO FEES"] },
+  { desc: "NET PROFIT", add: ["EXTERNAL PROFIT"], sub: ["FOREIGN EXCHANGE GAIN/LOSS", "ROYALTY FEES", "INTEREST EXPENSE ORKIN", "CANADIAN TAXES", "NON-OP INT EXP/(REV)"] },
+]
+
+/**
+ * Recompute all subtotal/total rows from their children for both forecast and budget values.
+ * Also overrides overhead allocation forecast values with budget (statutory/fixed).
+ */
+function recomputeAllSubtotals(forecasts: ForecastResult[]): ForecastResult[] {
+  if (forecasts.length === 0) return forecasts
+  const result = forecasts.map(f => {
+    // Step 1: Override statutory/fixed items forecast with budget
+    if (BUDGET_ONLY_LINES.has(normDesc(f.description))) {
+      return { ...f, forecastValue: f.budgetValue, variance: 0, variancePercent: 0 }
+    }
+    return { ...f }
+  })
+
+  // Step 2: Recompute subtotals per month
+  const months = [...new Set(result.map(f => f.month))]
+
+  for (const month of months) {
+    // Build lookup: normDesc → index in result array
+    const descMap = new Map<string, number>()
+    result.forEach((f, i) => {
+      if (f.month === month) descMap.set(normDesc(f.description), i)
+    })
+
+    for (const rule of SUBTOTAL_RULES) {
+      const key = normDesc(rule.desc)
+      const idx = descMap.get(key)
+      if (idx === undefined) continue // subtotal row doesn't exist
+
+      let fSum = 0
+      let bSum = 0
+      for (const child of rule.add) {
+        const ci = descMap.get(normDesc(child))
+        if (ci !== undefined) { fSum += result[ci].forecastValue; bSum += result[ci].budgetValue }
+      }
+      if (rule.sub) {
+        for (const child of rule.sub) {
+          const ci = descMap.get(normDesc(child))
+          if (ci !== undefined) { fSum -= result[ci].forecastValue; bSum -= result[ci].budgetValue }
+        }
+      }
+
+      const fv = Math.round(fSum * 100) / 100
+      const bv = Math.round(bSum * 100) / 100
+      const v = Math.round((fv - bv) * 100) / 100
+      result[idx] = { ...result[idx], forecastValue: fv, budgetValue: bv, variance: v, variancePercent: bv !== 0 ? Math.round(((fv - bv) / bv) * 100 * 100) / 100 : 0 }
+    }
+  }
+
+  return result
+}
+
 export default function ForecastPage() {
   const searchParams = useSearchParams()
   const branchFromUrl = searchParams.get("branch")
@@ -435,7 +573,7 @@ export default function ForecastPage() {
     // Core P&L formulas
     const contribution = totalRevenue - totalExpenses
     const operatingProfit = contribution - totalOverhead
-    const bonusOperatingProfit = operatingProfit + overheadReversal
+    const bonusOperatingProfit = operatingProfit - overheadReversal
     const externalProfit = bonusOperatingProfit - homeOffice - acquisitionCost - ultiproFees
     const netProfit = externalProfit - foreignExchange - royaltyFees - interestExpense - canadianTaxes - nonOpInt
 
@@ -536,11 +674,14 @@ export default function ForecastPage() {
     }
   }
 
-  const descriptions = [...new Set(forecasts.map(f => f.description))]
+  // ── Recompute subtotals & override overhead allocations for display ──
+  const processedForecasts = useMemo(() => recomputeAllSubtotals(forecasts), [forecasts])
+
+  const descriptions = [...new Set(processedForecasts.map(f => f.description))]
   const filteredByCategory =
     selectedDescription === "all"
-      ? forecasts
-      : forecasts.filter((f) => f.description === selectedDescription)
+      ? processedForecasts
+      : processedForecasts.filter((f) => f.description === selectedDescription)
   const searchLower = searchQuery.trim().toLowerCase()
   const filteredForecasts =
     searchLower === ""
@@ -552,14 +693,14 @@ export default function ForecastPage() {
   // Chart: when "All Categories" show KPI-only totals (same as summary cards); otherwise show selected category
   const chartForecasts =
     selectedDescription === "all"
-      ? forecasts.filter((f) => {
+      ? processedForecasts.filter((f) => {
         const d = normDesc(f.description)
         return d === KPI_REVENUE || KPI_EXPENSE_LINES.has(d)
       })
       : filteredForecasts
 
   // Summary stats: use LEAF items only to ensure real-time updates when children are edited
-  const monthRows = forecasts.filter(f => f.month === currentMonth)
+  const monthRows = processedForecasts.filter(f => f.month === currentMonth)
   let revenueForecast = 0
   let revenueBudget = 0
   let expenseForecast = 0
@@ -573,12 +714,12 @@ export default function ForecastPage() {
     const isLeaf = isLeafDescription(d)
     const val = Math.min(DISPLAY_CAP, f.forecastValue)
 
-    if (isLeaf) {
+    if (isLeaf && !BELOW_THE_LINE.has(d)) {
       if (isRevenueLine(d)) {
         revenueForecast += val
         revenueBudget += f.budgetValue
       } else {
-        // Everything else that is a leaf is an expense (payroll, supplies, allocations, etc.)
+        // Expense leaf (excluding below-the-line items like overhead allocations)
         expenseForecast += val
         expenseBudget += f.budgetValue
       }
@@ -589,14 +730,14 @@ export default function ForecastPage() {
   const expenseVariance = expenseForecast - expenseBudget
   const expenseVariancePct = expenseBudget !== 0 ? (expenseVariance / expenseBudget) * 100 : 0
 
-  // Derived Net Profit for summary cards
-  const netProfitForecast = revenueForecast - expenseForecast
-  const netProfitBudget = revenueBudget - expenseBudget
-  const netProfitVariance = netProfitForecast - netProfitBudget
-  const netProfitPct = netProfitBudget !== 0 ? (netProfitVariance / Math.abs(netProfitBudget)) * 100 : 0
+  // Derived Contribution B/4 Overhead for summary cards (= Revenue - Expenses before overhead)
+  const contributionForecast = revenueForecast - expenseForecast
+  const contributionBudget = revenueBudget - expenseBudget
+  const contributionVariance = contributionForecast - contributionBudget
+  const contributionPct = contributionBudget !== 0 ? (contributionVariance / Math.abs(contributionBudget)) * 100 : 0
 
   // Full-year totals (all 12 months)
-  const monthsPresent = new Set(forecasts.map((f) => f.month))
+  const monthsPresent = new Set(processedForecasts.map((f) => f.month))
   const hasFullYearData = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].every((m) => monthsPresent.has(m))
 
   let annualRevenueForecast = 0
@@ -604,11 +745,11 @@ export default function ForecastPage() {
   let annualExpenseForecast = 0
   let annualExpenseBudget = 0
 
-  forecasts.forEach((f) => {
+  processedForecasts.forEach((f) => {
     const d = normDesc(f.description)
     const isLeaf = isLeafDescription(d)
     const val = Math.min(DISPLAY_CAP, f.forecastValue)
-    if (isLeaf) {
+    if (isLeaf && !BELOW_THE_LINE.has(d)) {
       if (isRevenueLine(d)) {
         annualRevenueForecast += val
         annualRevenueBudget += f.budgetValue
@@ -619,10 +760,10 @@ export default function ForecastPage() {
     }
   })
 
-  // Full-year variables
-  const annualNetProfitForecast = annualRevenueForecast - annualExpenseForecast
-  const annualNetProfitBudget = annualRevenueBudget - annualExpenseBudget
-  const annualNetProfitVariance = annualNetProfitForecast - annualNetProfitBudget
+  // Full-year Contribution B/4 Overhead
+  const annualContributionForecast = annualRevenueForecast - annualExpenseForecast
+  const annualContributionBudget = annualRevenueBudget - annualExpenseBudget
+  const annualContributionVariance = annualContributionForecast - annualContributionBudget
 
   const exportToCSV = () => {
     const headers = ["Description", "Month", "Forecast", "Budget", "Variance", "Variance %"]
@@ -915,14 +1056,14 @@ export default function ForecastPage() {
               <Card className="border-accent/20 bg-accent/5">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {currentYear} full year · Net Profit
+                    {currentYear} full year · Contribution B/4 Overhead
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold">Forecast {formatCurrency(annualNetProfitForecast)}</div>
-                  <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualNetProfitBudget)}</p>
-                  <p className={cn("text-xs mt-1 font-medium", annualNetProfitForecast >= annualNetProfitBudget ? "text-accent" : "text-destructive")}>
-                    Variance {annualNetProfitForecast >= annualNetProfitBudget ? "+" : ""}{formatCurrency(annualNetProfitVariance)}
+                  <div className="text-xl font-bold">Forecast {formatCurrency(annualContributionForecast)}</div>
+                  <p className="text-xs text-muted-foreground">Budget {formatCurrency(annualContributionBudget)}</p>
+                  <p className={cn("text-xs mt-1 font-medium", annualContributionForecast >= annualContributionBudget ? "text-accent" : "text-destructive")}>
+                    Variance {annualContributionForecast >= annualContributionBudget ? "+" : ""}{formatCurrency(annualContributionVariance)}
                   </p>
                 </CardContent>
               </Card>
@@ -982,15 +1123,15 @@ export default function ForecastPage() {
                 <Card className="border-accent/20">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Monthly Net Profit · {getShortMonthName(currentMonth)}
+                      Contribution B/4 Overhead · {getShortMonthName(currentMonth)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(netProfitForecast)}</div>
+                    <div className="text-2xl font-bold">{formatCurrency(contributionForecast)}</div>
                     <div className="flex items-center justify-between mt-1">
-                      <p className="text-xs text-muted-foreground">Budget: {formatCurrency(netProfitBudget)}</p>
-                      <p className={cn("text-xs font-medium", netProfitVariance >= 0 ? "text-accent" : "text-destructive")}>
-                        {formatPercent(netProfitPct)}
+                      <p className="text-xs text-muted-foreground">Budget: {formatCurrency(contributionBudget)}</p>
+                      <p className={cn("text-xs font-medium", contributionVariance >= 0 ? "text-accent" : "text-destructive")}>
+                        {formatPercent(contributionPct)}
                       </p>
                     </div>
                   </CardContent>

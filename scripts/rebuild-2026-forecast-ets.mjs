@@ -1,9 +1,13 @@
 /**
- * Rebuild 2026 forecast_value using Seasonal naive + growth + driver-based layer.
+ * Rebuild 2026 forecast_value using Seasonal naive + growth + driver-based layer,
+ * blended with budget figures for stability.
  * Uses 2023–2025 historical data. Growth = 2024→2025 YoY; prior fallback to 2023.
- * Drivers: working days (wd_2026/wd_2025), seasonal index (global pattern).
+ * Drivers: working days (wd_2026/wd_2025).
  *
- * Usage: node scripts/rebuild-2026-forecast-ets.mjs [--no-working-days] [--no-seasonal-index]
+ * Budget blend: final = alpha × statistical + (1-alpha) × budget.
+ * Default alpha = 0.5 (equal weight). Use --alpha=0.7 to lean more on history.
+ *
+ * Usage: node scripts/rebuild-2026-forecast-ets.mjs [--alpha=0.5] [--no-working-days] [--no-seasonal-index]
  */
 
 import fs from "fs"
@@ -17,6 +21,10 @@ const dataDir = path.join(__dirname, "data")
 
 const useWorkingDays = !process.argv.includes("--no-working-days")
 const useSeasonalIndex = !process.argv.includes("--no-seasonal-index")
+
+// Budget blend alpha: 1.0 = pure statistical, 0.0 = pure budget, 0.5 = equal blend
+const alphaArg = process.argv.find(a => a.startsWith("--alpha="))
+const BLEND_ALPHA = alphaArg ? Math.max(0, Math.min(1, Number(alphaArg.split("=")[1]))) : 0.5
 let WORKING_DAYS = null
 if (useWorkingDays) {
   try {
@@ -84,8 +92,12 @@ function findHistoryRows(historyByDesc, budgetDesc) {
 }
 
 /**
- * Seasonal naive + growth + driver-based layer (working days, seasonal index).
- * forecast = last_year[m] × (1 + growth) × (wd_2026[m] / wd_2025[m]) × (seasonal_index[m]).
+ * Seasonal naive + growth + working-days driver.
+ * forecast = last_year[m] × (1 + growth) × (wd_2026[m] / wd_2025[m]).
+ *
+ * NOTE: Seasonal index is intentionally NOT applied per-month here because the
+ * base (last_year[m]) already embeds the seasonal shape. Applying it again would
+ * double-count seasonality, creating artificial dips in low months.
  */
 function seasonalNaiveGrowthDrift(histRows, seasonalIndex = null) {
   const by = new Map()
@@ -107,10 +119,8 @@ function seasonalNaiveGrowthDrift(histRows, seasonalIndex = null) {
     const wd2026 = MONTHS.map((m) => Number(WORKING_DAYS["2026"][String(m)]) || 21)
     preds = preds.map((v, i) => (wd2025[i] > 0 ? v * (wd2026[i] / wd2025[i]) : v))
   }
-  if (useSeasonalIndex && seasonalIndex && Array.isArray(seasonalIndex) && seasonalIndex.length === 12) {
-    const avg = seasonalIndex.reduce((a, b) => a + b, 0) / 12 || 1
-    preds = preds.map((v, i) => (avg > 0 ? v * (seasonalIndex[i] / avg) : v))
-  }
+  // Seasonal index: only used when --no-seasonal-index is NOT set and base year has no data
+  // (i.e., fallback distribution of annual total). Skipped for seasonal naive to avoid double-count.
   return preds.map((v) => Math.max(0, r2(v)))
 }
 
@@ -190,7 +200,7 @@ async function main() {
     useWorkingDays && WORKING_DAYS && "working days",
     useSeasonalIndex && seasonalIndex && "seasonal index",
   ].filter(Boolean)
-  console.log(`Rebuilding 2026 forecasts (Seasonal naive + growth${drivers.length ? " + " + drivers.join(" + ") : ""}) for all ${branches.length} branches...`)
+  console.log(`Rebuilding 2026 forecasts (Seasonal naive + growth${drivers.length ? " + " + drivers.join(" + ") : ""}, budget blend alpha=${BLEND_ALPHA}) for all ${branches.length} branches...`)
   console.log("")
 
   let totalUpserted = 0
@@ -244,6 +254,11 @@ async function main() {
       for (let j = 0; j < MONTHS.length; j++) {
         const month = MONTHS[j]
         const budget = n(budgetRows.find((r) => r.month === month)?.budget_value)
+        const statistical = preds[j] ?? 0
+        // Blend statistical forecast with budget: alpha=1 → pure statistical, alpha=0 → pure budget
+        const blended = budget > 0 && statistical > 0
+          ? statistical * BLEND_ALPHA + budget * (1 - BLEND_ALPHA)
+          : statistical > 0 ? statistical : budget
         const lastYear = map2025["2025|" + month] ?? 0
         const lastMonth = month === 1 ? (map2025["2025|12"] ?? 0) : (map2025["2025|" + (month - 1)] ?? 0)
         upserts.push({
@@ -251,7 +266,7 @@ async function main() {
           description: desc,
           year: TARGET_YEAR,
           month,
-          forecast_value: r2(preds[j] ?? 0),
+          forecast_value: r2(blended),
           budget_value: r2(budget),
           last_month_value: r2(lastMonth),
           last_year_value: r2(lastYear),

@@ -45,6 +45,31 @@ import { cn } from "@/lib/utils"
 const KPI_REVENUE = "TOTAL NET REVENUE"
 const KPI_EXPENSE_LINES = new Set(["TOTAL EXPENSES", "TOTAL OVERHEAD ALLOCATIONS"])
 
+// Items hidden from display (below External Profit)
+const HIDDEN_BELOW_EXTERNAL = new Set([
+  "FOREIGN EXCHANGE GAIN/LOSS",
+  "ROYALTY FEES",
+  "INTEREST EXPENSE ORKIN",
+  "CANADIAN TAXES",
+  "NON-OP INT EXP/(REV)",
+  "NET PROFIT",
+])
+
+// Statutory/fixed lines — non-editable (use budget figures)
+const BUDGET_ONLY_DESCS = new Set([
+  "SALES ALLOCATIONS", "QA ALLOCATIONS", "AR ALLOCATIONS",
+  "DATA PROCESSING ALLOCATIONS", "ACCOUNTING ALLOCATIONS",
+  "ADVERTISING & MKTG - ALLOCATION", "REGION SUPPORT SERVICES",
+  "CANADA OVERHEAD ALLOCATIONS", "BMT ALLOCATIONS",
+  "FLEET ALLOCATIONS", "CORPORATE ADMIN ALLOCATIONS",
+  "HO ADMIN ALLOCATIONS", "HUMAN RESOURCES ALLOCATIONS",
+  "INFORMATION TECH. ALLOCATIONS",
+  "OVERHEAD ALLOCATION REVERSAL",
+  "HOME OFFICE OVERHEAD",
+  "ACQUISITION COST",
+  "ULTIPRO FEES",
+])
+
 // Template order from branchData Excel files (e.g. branchData/2026Budget/8.xlsx) — column 0, row order
 const TEMPLATE_ORDER = [
   "PEST CONTROL REVENUE",
@@ -278,20 +303,24 @@ export function ForecastTable({
     return true
   })
 
-  // Group by description (from filtered forecasts), exclude hidden rows
+  // Group by description (from filtered forecasts), exclude hidden rows and below-External-Profit items
   const uniqueDescriptions = [...new Set(filteredForecasts.map(f => f.description))]
+    .filter(d => !HIDDEN_BELOW_EXTERNAL.has(normDesc(d)))
   const allDescriptions = sortByTemplate
     ? [...uniqueDescriptions].sort((a, b) => {
       const na = normForMatch(a)
       const nb = normForMatch(b)
-      const ia = TEMPLATE_ORDER.findIndex((t) => {
-        const nt = normForMatch(t)
-        return na === nt || na.startsWith(nt + " ") || nt.startsWith(na + " ")
-      })
-      const ib = TEMPLATE_ORDER.findIndex((t) => {
-        const nt = normForMatch(t)
-        return nb === nt || nb.startsWith(nt + " ") || nt.startsWith(nb + " ")
-      })
+      const findTemplateIndex = (n: string) => {
+        // Prefer exact match to avoid prefix collisions (e.g. "PAYROLL" vs "PAYROLL TAXES")
+        const exact = TEMPLATE_ORDER.findIndex((t) => normForMatch(t) === n)
+        if (exact !== -1) return exact
+        return TEMPLATE_ORDER.findIndex((t) => {
+          const nt = normForMatch(t)
+          return n.startsWith(nt + " ") || nt.startsWith(n + " ")
+        })
+      }
+      const ia = findTemplateIndex(na)
+      const ib = findTemplateIndex(nb)
       if (ia >= 0 && ib >= 0) return ia - ib
       if (ia >= 0) return -1
       if (ib >= 0) return 1
@@ -475,7 +504,7 @@ export function ForecastTable({
                   {months.map(month => {
                     const f = descForecasts.find(m => m.month === month)
                     const isCurrent = month === currentMonth
-                    const isClickable = editable && onUpdateForecast && f
+                    const isClickable = editable && onUpdateForecast && f && isLeafDescription(description) && !BUDGET_ONLY_DESCS.has(normDesc(description))
 
                     return (
                       <TableCell
