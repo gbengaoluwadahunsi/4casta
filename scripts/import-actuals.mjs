@@ -140,13 +140,29 @@ function detectYearFromSheet(rows) {
   return null
 }
 
+// Descriptions that appear in multiple P&L sections.
+const DUPLICATE_RENAMES = {
+  "COMMERCIAL BED BUG REVENUE": { first: "COMMERCIAL BED BUG REVENUE (recur)", second: "COMMERCIAL BED BUG REVENUE" },
+  "ORKIN/AIRE": { first: "ORKIN/AIRE", second: "ORKIN/AIRE (M&S)" },
+}
+
 function rowsToActualsWithHeader(rows, year, header) {
   const actuals = []
+  const seenDescs = new Map()
   const { headerRow, descriptionCol, monthCols } = header
   for (let i = headerRow + 1; i < rows.length; i++) {
     const row = rows[i] || []
-    const description = row[descriptionCol] != null ? String(row[descriptionCol]).trim() : ""
+    let description = row[descriptionCol] != null ? String(row[descriptionCol]).trim() : ""
     if (!description || /^\d+$/.test(description)) continue
+
+    const upperDesc = description.toUpperCase()
+    const rename = DUPLICATE_RENAMES[upperDesc]
+    if (rename) {
+      const count = (seenDescs.get(upperDesc) || 0) + 1
+      seenDescs.set(upperDesc, count)
+      description = count === 1 ? rename.first : rename.second
+    }
+
     for (let m = 0; m < 12; m++) {
       const colIdx = monthCols[m]
       const value = toNum(row[colIdx])
@@ -159,10 +175,20 @@ function rowsToActualsWithHeader(rows, year, header) {
 
 function rowsToActuals(rows, year) {
   const actuals = []
+  const seenDescs = new Map()
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
-    const description = row && row[0] != null ? String(row[0]).trim() : ""
+    let description = row && row[0] != null ? String(row[0]).trim() : ""
     if (!description) continue
+
+    const upperDesc = description.toUpperCase()
+    const rename = DUPLICATE_RENAMES[upperDesc]
+    if (rename) {
+      const count = (seenDescs.get(upperDesc) || 0) + 1
+      seenDescs.set(upperDesc, count)
+      description = count === 1 ? rename.first : rename.second
+    }
+
     for (let m = 0; m < 12; m++) {
       const raw = row[m + 1]
       if (raw === undefined || raw === null || raw === "") continue

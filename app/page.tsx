@@ -13,10 +13,7 @@ export default function HomePage() {
           <Image src="/orkinlogo.png" alt="Orkin" width={120} height={36} className="h-9 w-auto" />
           <div className="flex items-center gap-4">
             <Link href="/auth/login">
-              <Button variant="ghost">Sign in</Button>
-            </Link>
-            <Link href="/auth/sign-up">
-              <Button>Get Started</Button>
+              <Button>Sign In</Button>
             </Link>
           </div>
         </div>
@@ -32,13 +29,8 @@ export default function HomePage() {
           Role-based access ensures the right people see the right data.
         </p>
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link href="/auth/sign-up">
-            <Button size="lg" className="text-lg px-8">
-              Start Forecasting
-            </Button>
-          </Link>
           <Link href="/auth/login">
-            <Button size="lg" variant="outline" className="text-lg px-8 bg-transparent">
+            <Button size="lg" className="text-lg px-8">
               Sign In
             </Button>
           </Link>
@@ -189,12 +181,12 @@ export default function HomePage() {
           <CardContent className="py-12">
             <h2 className="text-3xl font-bold mb-4">Ready to Start Forecasting?</h2>
             <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-              Create an account and start generating forecasts today. 
-              Generate accurate forecasts for your branches in minutes.
+              Sign in to access your branch forecasts. 
+              Contact your HQ administrator if you need an account.
             </p>
-            <Link href="/auth/sign-up">
+            <Link href="/auth/login">
               <Button size="lg" className="text-lg px-8">
-                Create Your Account
+                Sign In
               </Button>
             </Link>
           </CardContent>

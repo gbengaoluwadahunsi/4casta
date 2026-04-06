@@ -145,10 +145,7 @@ function LoginForm() {
               )}
             </Button>
             <p className="text-sm text-muted-foreground text-center">
-              Don&apos;t have an account?{" "}
-              <Link href="/auth/sign-up" className="text-primary hover:underline font-medium">
-                Sign up
-              </Link>
+              Need an account? Contact your HQ administrator.
             </p>
           </CardFooter>
         </form>

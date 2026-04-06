@@ -1,3 +1,16 @@
+import { redirect } from "next/navigation"
+
+/**
+ * Public sign-up is disabled.
+ * Only HQ admins can create accounts via /dashboard/create-account.
+ * Users receive an invite email, verify, and log in.
+ */
+export default function SignUpPage() {
+  redirect("/auth/login")
+}
+
+/* ---- original sign-up code below kept commented for reference ----
+
 "use client"
 
 import React from "react"
@@ -289,3 +302,5 @@ export default function SignUpPage() {
     </div>
   )
 }
+
+---- end of commented-out code */

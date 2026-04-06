@@ -69,7 +69,9 @@ const n = (v) => Number(v || 0)
 const r2 = (v) => {
   const x = Math.round((Number(v) || 0) * 100) / 100
   if (!Number.isFinite(x)) return 0
-  return Math.min(MAX_DECIMAL, Math.max(0, x))
+  // Allow negative values (allowances, deductions, etc.)
+  if (x < 0) return Math.max(-MAX_DECIMAL, x)
+  return Math.min(MAX_DECIMAL, x)
 }
 
 function normDesc(s) {
@@ -104,15 +106,17 @@ function seasonalNaiveGrowthDrift(histRows, seasonalIndex = null) {
   for (const r of histRows) {
     const k = `${r.year}|${r.month}`
     const v = n(r.forecast_value)
-    by.set(k, Math.max(by.get(k) || 0, v))
+    // Use max of absolute values to pick the "bigger" entry, preserving sign
+    const prev = by.get(k)
+    if (prev === undefined || Math.abs(v) > Math.abs(prev)) by.set(k, v)
   }
   const lastYear = MONTHS.map((m) => by.get("2025|" + m) ?? by.get("2024|" + m) ?? 0)
   const priorYear = MONTHS.map((m) => by.get("2024|" + m) ?? by.get("2023|" + m) ?? 0)
   const lastSum = lastYear.reduce((a, b) => a + b, 0)
   const priorSum = priorYear.reduce((a, b) => a + b, 0)
-  if (lastSum <= 0) return lastYear
-  // When prior year has no data, skip growth to avoid explosion (priorSum||1e-9 would multiply by ~1e9)
-  const growth = priorSum > 1 ? lastSum / priorSum - 1 : 0
+  if (lastSum === 0) return lastYear
+  // When prior year has no data, skip growth to avoid explosion
+  const growth = Math.abs(priorSum) > 1 ? lastSum / priorSum - 1 : 0
   let preds = lastYear.map((v) => v * (1 + growth))
   if (WORKING_DAYS?.["2025"] && WORKING_DAYS?.["2026"]) {
     const wd2025 = MONTHS.map((m) => Number(WORKING_DAYS["2025"][String(m)]) || 21)
@@ -121,7 +125,7 @@ function seasonalNaiveGrowthDrift(histRows, seasonalIndex = null) {
   }
   // Seasonal index: only used when --no-seasonal-index is NOT set and base year has no data
   // (i.e., fallback distribution of annual total). Skipped for seasonal naive to avoid double-count.
-  return preds.map((v) => Math.max(0, r2(v)))
+  return preds.map((v) => r2(v))
 }
 
 /** Compute global seasonal index from 2023-2025 history: month_m / yearly_avg, normalized to mean=1. */
@@ -256,9 +260,12 @@ async function main() {
         const budget = n(budgetRows.find((r) => r.month === month)?.budget_value)
         const statistical = preds[j] ?? 0
         // Blend statistical forecast with budget: alpha=1 → pure statistical, alpha=0 → pure budget
-        const blended = budget > 0 && statistical > 0
+        // Blend statistical forecast with budget, handling negative lines (allowances, deductions)
+        const bothNonZero = budget !== 0 && statistical !== 0
+        const sameSign = (budget >= 0) === (statistical >= 0)
+        const blended = bothNonZero && sameSign
           ? statistical * BLEND_ALPHA + budget * (1 - BLEND_ALPHA)
-          : statistical > 0 ? statistical : budget
+          : statistical !== 0 ? statistical : budget
         const lastYear = map2025["2025|" + month] ?? 0
         const lastMonth = month === 1 ? (map2025["2025|12"] ?? 0) : (map2025["2025|" + (month - 1)] ?? 0)
         upserts.push({
