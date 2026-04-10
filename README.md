@@ -1,4 +1,4 @@
-# Orkin – Branch Forecasting
+# 4casta – Branch Forecasting
 
 Monthly forecasting app for 46 operational branches across 7 regions, with role-based access: HQ Admin, Region Admin, and Branch User. Import branch-level Excel actuals/budget via scripts, generate forecasts per branch, and drill down by region.
 
