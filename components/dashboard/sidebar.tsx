@@ -1,8 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   LineChart,
@@ -14,17 +13,31 @@ import {
   Home,
   History,
   ClipboardList,
+  Zap,
+  LogOut,
 } from "lucide-react"
+import { useAuth } from "@/app/providers"
 
 type Profile = {
   id: string
   email: string
   full_name: string | null
   role: string
-  region_id: string | null
-  branch_id: string | null
+  region_id: number | null
+  branch_id: number | null
   regions?: { name: string } | null
   branches?: { name: string } | null
+}
+
+type Region = {
+  id: number
+  name: string
+}
+
+type Branch = {
+  id: number
+  name: string
+  region_id: number
 }
 
 const navItems = {
@@ -53,16 +66,27 @@ const navItems = {
   ],
 }
 
-export function DashboardSidebar({ profile }: { profile: Profile }) {
+export function DashboardSidebar({ profile, regions = [], branches = [] }: { profile: Profile, regions?: Region[], branches?: Branch[] }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { signOut } = useAuth()
   const items = navItems[profile.role as keyof typeof navItems] || navItems.branch_user
+
+  const handleSignOut = async () => {
+    await signOut()
+    router.push('/auth/login')
+  }
 
   return (
     <aside className="w-14 md:w-64 shrink-0 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border transition-[width]">
       <div className="p-3 md:p-6 border-b border-sidebar-border flex justify-center md:justify-start">
-        <Link href="/dashboard" className="flex items-center">
-          <Image src="/orkinlogo.png" alt="Orkin" width={120} height={36} className="h-7 w-auto hidden md:block" />
-          <Image src="/orkinlogo.png" alt="Orkin" width={32} height={32} className="h-8 w-8 md:hidden rounded object-contain" />
+        <Link href="/" className="flex items-center gap-2 group">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-cyan-400 flex items-center justify-center">
+            <Zap className="w-4 h-4 text-primary-foreground" />
+          </div>
+          <span className="text-lg font-bold hidden md:block text-sidebar-foreground">
+            4<span className="text-primary">casta</span>
+          </span>
         </Link>
       </div>
       <nav className="flex-1 p-2 md:p-4">
@@ -79,7 +103,7 @@ export function DashboardSidebar({ profile }: { profile: Profile }) {
                     "flex items-center justify-center md:justify-start gap-3 px-2 md:px-3 py-2 rounded-md text-sm font-medium transition-colors",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   )}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
@@ -90,7 +114,7 @@ export function DashboardSidebar({ profile }: { profile: Profile }) {
           })}
         </ul>
       </nav>
-      <div className="p-2 md:p-4 border-t border-sidebar-border">
+      <div className="p-2 md:p-4 border-t border-sidebar-border space-y-1">
         <Link
           href="/dashboard/settings"
           title="Settings"
@@ -98,12 +122,19 @@ export function DashboardSidebar({ profile }: { profile: Profile }) {
             "flex items-center justify-center md:justify-start gap-3 px-2 md:px-3 py-2 rounded-md text-sm font-medium transition-colors",
             pathname === "/dashboard/settings"
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           )}
         >
           <Settings className="h-5 w-5 shrink-0" />
           <span className="hidden md:inline truncate">Settings</span>
         </Link>
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center md:justify-start gap-3 px-2 md:px-3 py-2 rounded-md text-sm font-medium transition-colors text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          <span className="hidden md:inline truncate">Sign Out</span>
+        </button>
       </div>
     </aside>
   )

@@ -1,140 +1,85 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+'use client'
+
+import { useAuth } from "@/app/providers"
+import { db } from "@/lib/local-db"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { History, FileSpreadsheet } from "lucide-react"
+import { History } from "lucide-react"
+import { useLiveQuery } from "dexie-react-hooks"
 
-export default async function ActivityPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default function ActivityPage() {
+  const { user } = useAuth()
+  
+  const profiles = useLiveQuery(() => db.profiles.toArray(), [])
+  const branches = useLiveQuery(() => db.branches.toArray(), [])
 
-  if (!user) redirect("/auth/login")
+  const getUserName = (id: string) => profiles?.find(p => p.id === id)?.full_name || 'Unknown'
+  const getBranchName = (id: number) => branches?.find(b => b.id === id)?.name || 'Unknown'
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, branch_id, region_id")
-    .eq("id", user.id)
-    .single()
+  const canViewAll = user?.role === 'hq_admin' || user?.role === 'region_admin'
 
-  if (!profile) redirect("/auth/login")
+  const mockActivity = [
+    { id: 1, user_id: 'test-account-001', branch_id: 1, action: 'Viewed Dashboard', timestamp: new Date().toISOString() },
+    { id: 2, user_id: 'test-account-001', branch_id: 1, action: 'Generated Forecast', timestamp: new Date(Date.now() - 86400000).toISOString() },
+    { id: 3, user_id: 'test-account-001', branch_id: 2, action: 'Exported Data', timestamp: new Date(Date.now() - 172800000).toISOString() },
+  ]
 
-  // Fetch uploads with branch name (RLS scopes by role)
-  let query = supabase
-    .from("uploads")
-    .select("*, branches(name)")
-    .order("created_at", { ascending: false })
-    .limit(100)
-
-  if (profile.role === "branch_user" && profile.branch_id) {
-    query = query.eq("branch_id", profile.branch_id)
-  } else if (profile.role === "region_admin" && profile.region_id) {
-    const { data: regionBranches } = await supabase
-      .from("branches")
-      .select("id")
-      .eq("region_id", profile.region_id)
-    const branchIds = regionBranches?.map((b) => b.id) ?? []
-    if (branchIds.length > 0) {
-      query = query.in("branch_id", branchIds)
-    }
-  }
-
-  const { data: uploads } = await query
-  const rows = uploads ?? []
-
-  // Fetch user names from profiles (uploads.user_id = profiles.id)
-  const userIds = [...new Set(rows.map((u: { user_id: string }) => u.user_id))]
-  const { data: profilesList } = userIds.length > 0
-    ? await supabase.from("profiles").select("id, full_name, email").in("id", userIds)
-    : { data: [] }
-  const userMap = new Map(
-    (profilesList ?? []).map((p: { id: string; full_name: string | null; email: string }) => [
-      p.id,
-      p.full_name || p.email || "Unknown",
-    ])
-  )
+  const filteredActivity = canViewAll 
+    ? mockActivity 
+    : mockActivity.filter(a => a.branch_id === user?.branch_id)
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Activity</h1>
-        <p className="text-muted-foreground mt-1">
-          Activity history (imports and data changes)
+        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
+          <History className="h-8 w-8 text-primary" />
+          Activity
+        </h1>
+        <p className="text-white/60 mt-1">
+          Recent activity log for the forecasting platform
         </p>
       </div>
 
-      <Card>
+      <Card className="bg-white/5 border-white/10">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Upload history
-          </CardTitle>
-          <CardDescription>
-            Record of data imports by user and branch
-          </CardDescription>
+          <CardTitle className="text-white">Recent Activity</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>File</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Year</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((upload: {
-                id: string
-                user_id: string
-                created_at: string
-                file_name: string
-                upload_type: string
-                year: number
-                branches?: { name: string } | null
-              }) => {
-                const userName = userMap.get(upload.user_id) ?? "Unknown"
-                return (
-                  <TableRow key={upload.id}>
-                    <TableCell className="text-muted-foreground whitespace-nowrap">
-                      {new Date(upload.created_at).toLocaleString()}
-                    </TableCell>
-                    <TableCell>{userName}</TableCell>
-                    <TableCell>{upload.branches?.name ?? "-"}</TableCell>
-                    <TableCell className="flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                      {upload.file_name}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{upload.upload_type}</Badge>
-                    </TableCell>
-                    <TableCell>{upload.year}</TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-
-          {(!rows || rows.length === 0) && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <History className="h-12 w-12 text-muted-foreground mb-4" />
-              <h2 className="text-xl font-semibold">No activity yet</h2>
-              <p className="text-muted-foreground mt-2">
-                Activity will appear here when data is imported or changed.
-              </p>
-            </div>
-          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left py-3 px-4 text-white/60">User</th>
+                  <th className="text-left py-3 px-4 text-white/60">Branch</th>
+                  <th className="text-left py-3 px-4 text-white/60">Action</th>
+                  <th className="text-left py-3 px-4 text-white/60">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredActivity.map((activity) => (
+                  <tr key={activity.id} className="border-b border-white/5 hover:bg-white/5">
+                    <td className="py-3 px-4 text-white">{getUserName(activity.user_id)}</td>
+                    <td className="py-3 px-4 text-white/60">{getBranchName(activity.branch_id)}</td>
+                    <td className="py-3 px-4">
+                      <Badge className="bg-primary/20 text-primary">{activity.action}</Badge>
+                    </td>
+                    <td className="py-3 px-4 text-white/40 text-xs">
+                      {new Date(activity.timestamp).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
+
+      {filteredActivity.length === 0 && (
+        <div className="text-center py-12">
+          <History className="w-12 h-12 text-white/20 mx-auto mb-4" />
+          <p className="text-white/40">No activity recorded yet</p>
+        </div>
+      )}
     </div>
   )
 }

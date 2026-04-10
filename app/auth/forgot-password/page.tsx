@@ -1,134 +1,60 @@
-"use client"
+'use client'
 
 import { useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import Image from "next/image"
-import { Loader2, ArrowLeft, CheckCircle } from "lucide-react"
+import { Zap, ArrowLeft, Info } from "lucide-react"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [sent, setSent] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    const supabase = createClient()
-    const origin = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    setSent(true)
-    setLoading(false)
-  }
-
-  if (sent) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <Image src="/orkinlogo.png" alt="Orkin" width={140} height={40} className="h-10 w-auto" priority />
-            </div>
-            <div className="flex justify-center mb-4">
-              <div className="rounded-full bg-green-500/10 p-3">
-                <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <CardTitle className="text-2xl">Check your email</CardTitle>
-            <CardDescription>
-              If an account exists for <strong>{email}</strong>, we&apos;ve sent a link to reset your password.
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="flex flex-col gap-4">
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/auth/login">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Sign in
-              </Link>
-            </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Didn&apos;t receive the email?{" "}
-              <button
-                type="button"
-                onClick={() => setSent(false)}
-                className="text-primary hover:underline font-medium"
-              >
-                Try again
-              </button>
-            </p>
-          </CardFooter>
-        </Card>
-      </div>
-    )
-  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f] p-4 relative overflow-hidden">
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0f] via-[#0d1117] to-[#0a0a0f]" />
+      </div>
+      <Card className="w-full max-w-md bg-white/5 border-white/10 backdrop-blur-xl">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <Image src="/orkinlogo.png" alt="Orkin" width={140} height={40} className="h-10 w-auto" priority />
+            <Link href="/" className="flex items-center gap-2">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-cyan-400 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-white">
+                4<span className="text-primary">casta</span>
+              </span>
+            </Link>
           </div>
-          <CardTitle className="text-2xl">Forgot password?</CardTitle>
-          <CardDescription>
-            Enter your email and we&apos;ll send you a link to reset your password.
+          <div className="flex justify-center mb-4">
+            <div className="rounded-full bg-primary/10 p-3">
+              <Info className="h-8 w-8 text-primary" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl text-white">Demo Mode</CardTitle>
+          <CardDescription className="text-white/50">
+            Password reset is not available in demo mode
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
-                </>
-              ) : (
-                "Send reset link"
-              )}
-            </Button>
-            <Button asChild variant="ghost" className="w-full">
-              <Link href="/auth/login">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Sign in
-              </Link>
-            </Button>
-          </CardFooter>
-        </form>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-white/40">
+            This is a portfolio demo app. Use the test account credentials to sign in:
+          </p>
+          <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+            <p className="text-sm text-white/60 mb-2"><strong>Email:</strong> 4casta@testing.com</p>
+            <p className="text-sm text-white/60"><strong>Password:</strong> 4casta</p>
+          </div>
+        </CardContent>
+        <CardFooter className="flex flex-col gap-4">
+          <Button asChild className="w-full bg-primary hover:bg-primary/90">
+            <Link href="/auth/login">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Sign in
+            </Link>
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   )

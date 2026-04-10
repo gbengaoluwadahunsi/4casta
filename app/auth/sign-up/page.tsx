@@ -1,155 +1,86 @@
-import { redirect } from "next/navigation"
+'use client'
 
-/**
- * Public sign-up is disabled.
- * Only HQ admins can create accounts via /dashboard/create-account.
- * Users receive an invite email, verify, and log in.
- */
-export default function SignUpPage() {
-  redirect("/auth/login")
-}
-
-/* ---- original sign-up code below kept commented for reference ----
-
-"use client"
-
-import React from "react"
-
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Image from "next/image"
-import { Loader2, Eye, EyeOff } from "lucide-react"
-
-type Region = {
-  id: string
-  name: string
-}
-
-type Branch = {
-  id: string
-  name: string
-  region_id: string
-}
+import { Loader2, Eye, EyeOff, Zap } from "lucide-react"
+import { useAuth } from "@/app/providers"
+import { db } from "@/lib/local-db"
 
 export default function SignUpPage() {
+  const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [fullName, setFullName] = useState("")
-  const [role, setRole] = useState<"branch_user" | "region_admin">("branch_user")
-  const [regionId, setRegionId] = useState<string>("")
-  const [branchId, setBranchId] = useState<string>("")
-  const [regions, setRegions] = useState<Region[]>([])
-  const [branches, setBranches] = useState<Branch[]>([])
-  const [filteredBranches, setFilteredBranches] = useState<Branch[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [role, setRole] = useState<"branch_user" | "region_admin" | "hq_admin">("branch_user")
+  const [regionId, setRegionId] = useState<number>()
+  const [branchId, setBranchId] = useState<number>()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { signUp } = useAuth()
+
+  const [regions, setRegions] = useState<any[]>([])
+  const [branches, setBranches] = useState<any[]>([])
 
   useEffect(() => {
-    const fetchData = async () => {
-      const supabase = createClient()
-      const [regionsRes, branchesRes] = await Promise.all([
-        supabase.from("regions").select("*").order("name"),
-        supabase.from("branches").select("*").order("name"),
-      ])
-      if (regionsRes.data) setRegions(regionsRes.data)
-      if (branchesRes.data) setBranches(branchesRes.data)
+    const loadData = async () => {
+      const r = await db.regions.toArray()
+      const b = await db.branches.toArray()
+      setRegions(r)
+      setBranches(b)
     }
-    fetchData()
+    loadData()
   }, [])
-
-  useEffect(() => {
-    if (regionId) {
-      setFilteredBranches(branches.filter((b) => b.region_id === regionId))
-      if (role === "branch_user") setBranchId("")
-    } else {
-      setFilteredBranches([])
-      setBranchId("")
-    }
-  }, [regionId, branches, role])
-
-  useEffect(() => {
-    if (role === "region_admin") setBranchId("")
-  }, [role])
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    if (!regionId) {
-      setError("Please select your region")
+    try {
+      await signUp(email, password, fullName, role, regionId, branchId)
+      router.push("/dashboard")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create account")
+    } finally {
       setLoading(false)
-      return
     }
-    if (role === "branch_user" && !branchId) {
-      setError("Please select your branch")
-      setLoading(false)
-      return
-    }
-
-    const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: (() => {
-          const base =
-            typeof window !== 'undefined' && !/^https?:\/\/localhost(:\d+)?(\/|$)/i.test(window.location.origin)
-              ? window.location.origin
-              : process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
-          return base ? `${base.replace(/\/$/, '')}/auth/callback?next=/dashboard` : undefined
-        })(),
-        data: {
-          full_name: fullName,
-          role: role,
-          region_id: regionId || null,
-          branch_id: role === "branch_user" ? branchId || null : null,
-        },
-      },
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    // Update profile with region/branch after signup
-    const { data: userData } = await supabase.auth.getUser()
-    if (userData.user) {
-      await supabase
-        .from("profiles")
-        .update({
-          region_id: regionId || null,
-          branch_id: role === "branch_user" ? branchId || null : null,
-        })
-        .eq("id", userData.user.id)
-    }
-
-    router.push(`/auth/sign-up-success?email=${encodeURIComponent(email.trim())}`)
   }
 
+  const filteredBranches = regionId ? branches.filter(b => b.region_id === regionId) : []
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Image src="/orkinlogo.png" alt="Orkin" width={140} height={40} className="h-10 w-auto" priority />
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
+      <div className="absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
+      </div>
+
+      <Card className="w-full max-w-md glass border-border/50 shadow-2xl">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
+            <Link href="/" className="flex items-center gap-2 group transition-transform hover:scale-105 duration-300">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/25">
+                <Zap className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <span className="text-2xl font-bold tracking-tight">
+                4<span className="text-primary">casta</span>
+              </span>
+            </Link>
           </div>
-          <CardTitle className="text-2xl">Create account</CardTitle>
-          <CardDescription>
-            Sign up to access the Orkin forecasting system. Choose your role below.
-          </CardDescription>
+          <div className="space-y-1">
+            <CardTitle className="text-2xl font-bold">Create account</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Sign up to access the 4casta forecasting platform
+            </CardDescription>
+          </div>
         </CardHeader>
         <form onSubmit={handleSignUp}>
           <CardContent className="space-y-4">
@@ -166,6 +97,7 @@ export default function SignUpPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
+                className="bg-background/50 border-border"
               />
             </div>
             <div className="space-y-2">
@@ -177,6 +109,7 @@ export default function SignUpPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="bg-background/50 border-border"
               />
             </div>
             <div className="space-y-2">
@@ -188,7 +121,7 @@ export default function SignUpPage() {
                   placeholder="Create a password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pr-10"
+                  className="pr-10 bg-background/50 border-border"
                   required
                   minLength={6}
                 />
@@ -196,91 +129,52 @@ export default function SignUpPage() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground"
+                  onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    <EyeOff className="h-4 w-4" />
                   ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
+                    <Eye className="h-4 w-4" />
                   )}
                 </Button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as "branch_user" | "region_admin")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="branch_user">Branch User — access one branch</SelectItem>
-                  <SelectItem value="region_admin">Region Admin — access all branches in a region</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="region">Region</Label>
-              <Select value={regionId} onValueChange={setRegionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select your region" />
-                </SelectTrigger>
-                <SelectContent>
-                  {regions.map((region) => (
-                    <SelectItem key={region.id} value={region.id}>
-                      {region.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {role === "branch_user" && (
-              <div className="space-y-2">
-                <Label htmlFor="branch">Branch</Label>
-                <Select
-                  value={branchId}
-                  onValueChange={setBranchId}
-                  disabled={!regionId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={regionId ? "Select your branch" : "Select a region first"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {regionId ? (
-                      filteredBranches.length > 0 ? (
-                        filteredBranches.map((branch) => (
-                          <SelectItem key={branch.id} value={branch.id}>
-                            {branch.name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <div className="py-2 px-2 text-sm text-muted-foreground">No branches in this region</div>
-                      )
-                    ) : (
-                      <div className="py-2 px-2 text-sm text-muted-foreground">Select a region first</div>
-                    )}
-                  </SelectContent>
-                </Select>
-                {regionId && !branchId && (
-                  <p className="text-sm text-muted-foreground">Select a branch in your region</p>
+            {role !== "hq_admin" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Region</Label>
+                  <Select value={String(regionId)} onValueChange={(v) => { setRegionId(Number(v)); setBranchId(undefined) }}>
+                    <SelectTrigger className="bg-background/50 border-border">
+                      <SelectValue placeholder="Select region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {regions.map(r => (
+                        <SelectItem key={r.id} value={String(r.id)}>{r.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {regionId && (
+                  <div className="space-y-2">
+                    <Label>Branch</Label>
+                    <Select value={String(branchId)} onValueChange={(v) => setBranchId(Number(v))}>
+                      <SelectTrigger className="bg-background/50 border-border">
+                        <SelectValue placeholder="Select branch" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredBranches.map(b => (
+                          <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
-              </div>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">
-              Need an HQ Admin account? Ask your administrator to create one.
-            </p>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={
-                loading ||
-                !regionId ||
-                (role === "branch_user" && !branchId)
-              }
-            >
+            <Button type="submit" className="w-full bg-primary text-primary-foreground shadow-lg shadow-primary/20 h-11" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -290,17 +184,15 @@ export default function SignUpPage() {
                 "Create account"
               )}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="text-primary hover:underline font-medium">
+            <div className="flex items-center justify-center w-full gap-2 text-sm">
+              <span className="text-muted-foreground">Already have an account?</span>
+              <Link href="/auth/login" className="text-primary font-medium hover:underline">
                 Sign in
               </Link>
-            </p>
+            </div>
           </CardFooter>
         </form>
       </Card>
     </div>
   )
 }
-
----- end of commented-out code */

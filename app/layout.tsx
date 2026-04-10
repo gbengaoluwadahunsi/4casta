@@ -2,18 +2,18 @@ import React from "react"
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
-import { AuthHashHandler } from '@/components/auth/auth-hash-handler'
 import './globals.css'
+import { Providers } from "./providers"
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Orkin',
-  description: 'Orkin - Monthly forecasting application for branch, region, and headquarters management',
+  title: '4casta - Branch Forecasting',
+  description: '4casta - Private branch forecasting platform with voice-first AI',
   icons: {
-    icon: '/orkinlogo.png',
-    apple: '/orkinlogo.png',
+    icon: '/icon.svg',
+    apple: '/icon.svg',
   },
 }
 
@@ -25,8 +25,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`} suppressHydrationWarning>
-        <AuthHashHandler />
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <Analytics />
       </body>
     </html>
