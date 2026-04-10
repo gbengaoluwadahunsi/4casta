@@ -1,78 +1,77 @@
-# 4casta – Branch Forecasting
+# 4casta – Private Branch Forecasting with Voice-First AI
 
-Monthly forecasting app for 46 operational branches across 7 regions, with role-based access: HQ Admin, Region Admin, and Branch User. Import branch-level Excel actuals/budget via scripts, generate forecasts per branch, and drill down by region.
+**4casta** is a premium, local-first forecasting platform designed for managing and predicting operational performance across 46 branches and 7 regions. It features a sophisticated Voice-First AI assistant for hands-free navigation and deep data insights.
 
-## Tech stack
+## 🚀 Core Architecture
 
-- **Next.js 16** (App Router), **React 19**, **TypeScript**
-- **Supabase** (Auth, Postgres, RLS)
-- **Tailwind CSS**, **shadcn/ui**, **Recharts**
+Unlike traditional web apps, **4casta** is built with a **local-first** philosophy. It uses **Dexie.js (IndexedDB)** for persistent, high-performance client-side data management, allowing for instant dashboard updates and smooth performance even with large historical datasets (2023–2025).
 
-## Quick start
+## 🎙️ Voice-First AI Assistant
 
-### Clone and install
+One of the platform's standout features is the integrated AI Assistant:
+- **Speech Recognition**: Voice-commanded navigation (e.g., "Go to forecast", "Show my data").
+- **Kokoro TTS**: High-quality, on-device text-to-speech output using the `Kokoro-82M` model for natural-sounding voice feedback.
+- **Multilingual Support**: Support for various voice profiles (Heart, Sky, Alloy, Adam, Echo, Onyx).
 
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 16 (App Router), React 19, TypeScript
+- **Styling**: Tailwind CSS v4, shadcn/ui, Framer Motion
+- **Database**: Dexie.js (IndexedDB) for local state, with Supabase integration for hybrid cloud sync.
+- **Charts**: Recharts for interactive analytics.
+- **AI/ML**: Kokoro-js for TTS, on-device Speech Recognition API.
+
+## 🔐 Role-Based Access Control
+
+The platform implements a strict hierarchical dashboard system:
+- **HQ Admin**: Full company-wide visibility and user management.
+- **Region Admin**: Filtered access to specific regional performance and branches.
+- **Branch User**: Encapsulated view of their specific branch data only.
+
+## 📁 Quick Start
+
+### 1. Install Dependencies
 ```bash
 pnpm install
 ```
 
-After adding or changing dependencies in `package.json`, run `pnpm install` again and commit `pnpm-lock.yaml` so Vercel (and CI) can install with a frozen lockfile.
+### 2. Environment Setup
+Copy `.env.example` to `.env` and configure your Supabase credentials (for hybrid sync features):
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
+```
 
-### Environment
-
-- Copy `.env.example` to `.env`
-- Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from Supabase → your project → Settings → API
-- For production, set `NEXT_PUBLIC_APP_URL` (e.g. `https://yourdomain.com`)
-
-### Database
-
-- In Supabase: SQL Editor → run the full contents of `scripts/001_create_schema.sql`
-- See `SUPABASE_SETUP.md` for step-by-step setup (auth redirect URLs, first HQ admin, etc.)
-
-### Run
-
+### 3. Run Development Server
 ```bash
 pnpm dev
 ```
+The application will automatically seed the local IndexedDB with 3 years of historical data on the first visit to the login page.
 
-Open [http://localhost:3000](http://localhost:3000).
+## 📊 Forecasting Engine
 
-## Scripts
+The platform uses a sophisticated forecasting logic:
+- **Core Method**: Seasonal Naive + Growth Trend.
+- **Data Range**: Uses actuals from 2023–2025 to generate 2026 Monthly Forecasts.
+- **Drivers**: Incorporates working day adjustments and regional seasonal indices.
+- **Rebuild**: You can force-rebuild forecasts via scripts:
+  ```bash
+  pnpm forecast:rebuild
+  ```
 
-| Command | Description |
-| :--- | :--- |
-| `pnpm dev` | Start dev server |
-| `pnpm build` | Production build |
-| `pnpm start` | Start production server |
-| `pnpm lint` | Run ESLint |
-| `pnpm test` | Run unit tests (Vitest) |
-| `pnpm forecast:rebuild` | Rebuild 2026 forecasts (Seasonal naive + growth + working days + seasonal index) — reprobes all branches |
+## 📋 Data Import
 
-**Branch-by-branch import from Excel:** Use one file per branch and import with `node scripts/import-branch-file.mjs --branch <code|name> --file <path> --year <year>`. See `scripts/data/README.md`.
+Automated imports from Excel are supported via Node scripts:
+```bash
+node scripts/import-branch-file.mjs --branch <id> --file <path> --year <year>
+```
+*Format requirements: Column A (Description), Columns B-M (Jan-Dec values).*
 
-## Excel import format
+## 📄 Documentation
 
-- **Column A** = line item (Description)
-- **Columns B–M** = Jan–Dec (numeric values)
-- **Row 1** = header (skipped)
+- `SUPABASE_SETUP.md` – Database schema and auth configuration.
+- `UPLOAD_FORMAT.md` – Excel layout guidelines.
+- `TESTING_ROLES.md` – Detailed walkthrough of RLS and Role views.
 
-Use the documented spreadsheet layout in `UPLOAD_FORMAT.md`.
-
-## Forecasting and dates
-
-- Forecasts use historical actuals and budget data stored in Supabase.
-- Production forecasting uses **Seasonal naive + growth + driver-based layer**: 2025 seasonal pattern with YoY growth from 2024→2025, plus working days and seasonal index (unbiased, no budget input). Uses 2023–2025 history.
-- `budget_value` is kept separate from `forecast_value`; budget is for comparison only, not used in the forecast formula.
-- **Current month** and **forecast year** can be set on the Forecast page; underlying logic uses the selected year/month for “as of” and remaining months.
-- Server date is **UTC** for “current month” when not overridden.
-
-## Docs
-
-- `SUPABASE_SETUP.md` – Supabase project, schema, auth redirects, roles
-- `DEPLOYMENT.md` – Deploy to Vercel (env vars + Supabase redirect URLs)
-- `UPLOAD_FORMAT.md` – Excel layout and tips for accurate forecasting
-- `TESTING_ROLES.md` – Test login and RLS for HQ Admin, Region Admin, Branch User
-
-## License
-
+## ⚖️ License
 Private.
